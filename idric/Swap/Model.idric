@@ -1,0 +1,150 @@
+module Swap.Model
+
+import Data.List
+
+-- Executable semantic candidate: identities and positions are different roles.
+-- This is deliberately independent of Android, Sokol, GPU and finger pixels.
+
+public export
+choice identity one_of
+  coral
+  cyan
+  amber
+
+public export
+choice slot one_of
+  first_slot
+  second_slot
+  third_slot
+
+public export
+choice adjacent_pair one_of
+  first_pair
+  second_pair
+
+public export
+choice crossing_depth one_of
+  left_over
+  left_under
+
+public export
+record Ordering where
+  constructor MkOrdering
+  first_identity : identity
+  second_identity : identity
+  third_identity : identity
+
+public export
+record Crossing where
+  constructor MkCrossing
+  adjacent : adjacent_pair
+  depth : crossing_depth
+
+public export
+record History where
+  constructor MkHistory
+  crossings : List Crossing
+  visible_cursor : Double
+  stopped : Bool
+
+public export
+initial_order : Ordering
+initial_order = MkOrdering coral cyan amber
+
+public export
+initial_history : History
+initial_history = MkHistory [] 0.0 False
+
+public export
+same_identity : identity → identity → Bool
+same_identity coral coral = True
+same_identity cyan cyan = True
+same_identity amber amber = True
+same_identity _ _ = False
+
+public export
+same_order : Ordering → Ordering → Bool
+same_order (MkOrdering a b c) (MkOrdering d e f) =
+  same_identity a d && same_identity b e && same_identity c f
+
+public export
+identity_at : Ordering → slot → identity
+identity_at (MkOrdering a b c) first_slot = a
+identity_at (MkOrdering a b c) second_slot = b
+identity_at (MkOrdering a b c) third_slot = c
+
+public export
+slot_of : Ordering → identity → slot
+slot_of order colour =
+  if same_identity (first_identity order) colour
+    then first_slot
+    else if same_identity (second_identity order) colour
+      then second_slot
+      else third_slot
+
+public export
+exchange : adjacent_pair → Ordering → Ordering
+exchange first_pair (MkOrdering a b c) = MkOrdering b a c
+exchange second_pair (MkOrdering a b c) = MkOrdering a c b
+
+public export
+apply_crossing : Ordering → Crossing → Ordering
+apply_crossing ordering crossing = exchange (adjacent crossing) ordering
+
+public export
+order_after : List Crossing → Ordering
+order_after history = foldl apply_crossing initial_order history
+
+public export
+inverse : Crossing → Crossing
+inverse (MkCrossing p left_over) = MkCrossing p left_under
+inverse (MkCrossing p left_under) = MkCrossing p left_over
+
+public export
+opposite : crossing_depth → crossing_depth
+opposite left_over = left_under
+opposite left_under = left_over
+
+public export
+signed_writhe : Crossing → Integer
+signed_writhe (MkCrossing _ left_over) = 1
+signed_writhe (MkCrossing _ left_under) = -1
+
+public export
+writhe : List Crossing → Integer
+writhe history = foldl (\acc, crossing => acc + signed_writhe crossing) 0 history
+
+-- Unlike the initial C release, a move is QUEUED during earlier animation.
+-- Reject only when the bounded history is full. UI events must not be lost.
+public export
+queue_crossing : Crossing → History → Maybe History
+queue_crossing crossing history =
+  if length (crossings history) >= 128
+    then Nothing
+    else Just (MkHistory (crossings history ++ [crossing])
+                             (visible_cursor history) False)
+
+public export
+reset : History → History
+reset _ = initial_history
+
+public export
+replay : History → History
+replay history = MkHistory (crossings history) 0.0 False
+
+public export
+toggle_pause : History → History
+toggle_pause history =
+  MkHistory (crossings history) (visible_cursor history) (not (stopped history))
+
+-- A turn takes 0.80 seconds as in the C67 scene.
+-- Invalid/nonfinite native clock inputs must be rejected at the Android boundary.
+public export
+advance : Double → History → History
+advance seconds history =
+  if stopped history || seconds <= 0.0
+    then history
+    else MkHistory (crossings history)
+           (min (cast (length (crossings history)))
+                (visible_cursor history + seconds ÷ 0.80))
+           False

@@ -56,10 +56,10 @@ pinned checkouts are rejected, not reset. `libswap.so` is the native output;
 its presence is not an installable APK or physical-device evidence. The link
 rejects undefined symbols and checks `ANativeActivity_onCreate`.
 
-Candidate package identity: `org.isomorphismes.swap`, launcher label `Swap`,
+This `idric` input-experiment branch uses a separate side-by-side package identity: `org.isomorphismes.swap.controls`, launcher label `Swap Controls`,
 version code 1, minimum API 21, target API 35, no application DEX and no requested
 permissions. OpenGL ES 3 is required by the selected Sokol backend. CPU targets
-are ARM32 (`armeabi-v7a`, first MIRO A1 lane) and ARM64 (`arm64-v8a`). Compatibility
+are ARM32 (`armeabi-v7a`, MIRO C67 test lane) and ARM64 (`arm64-v8a`). Compatibility
 with an ABI is not proof of behavior on any particular handset.
 
 ## Signing and publication

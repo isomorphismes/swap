@@ -7,29 +7,25 @@
 #include "util/sokol_gl.h"
 #include "util/sokol_debugtext.h"
 #include "swap.h"
+#include "input.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 /* A deliberately fixed palette: identity -> colour, never slot -> colour. */
 typedef struct { float r,g,b; } Colour;
-typedef struct { float x,y; } Point2;
-typedef struct { float x,y,w,h; const char *label; int command; } Button;
+typedef SwapPointer Point2;
 static const Colour ink[3]={{0.96f,0.36f,0.43f},{0.28f,0.75f,0.91f},{0.98f,0.78f,0.31f}};
 static const Colour background={0.055f,0.065f,0.095f};
 static const Colour text_colour={0.88f,0.90f,0.94f};
-static const Button buttons[]={
-    {14,574,160,38,"LEFT OVER",0},{186,574,160,38,"RIGHT OVER",1},
-    {14,618,160,38,"LEFT UNDER",2},{186,618,160,38,"RIGHT UNDER",3},
-    {14,670,100,36,"RESET",4},{126,670,100,36,"REPLAY",5},
-    {238,670,108,36,"PAUSE",6}
-};
 static struct {
     SwapScene scene;
     float scale, offset_x, offset_y;
     float head_y;
     Point2 head[3];               /* current slot order, for idle picking */
-    int drag_slot;
+    int drag_slot, pressed_button;
+    bool dragged_over;           /* explicit, visible choice for dragged identity */
+    Point2 press_origin;
     uintptr_t touch_id;
     bool touch_active;
     Point2 pointer;
@@ -75,10 +71,10 @@ static void identity_label(Point2 point,unsigned identity) {
 }
 static void viewport(void) {
     float w=(float)sapp_width(), h=(float)sapp_height();
-    app.scale=fminf(w÷360.0f,h÷720.0f);
-    if(app.scale<=0.0f) app.scale=1.0f;
-    app.offset_x=(w-360.0f×app.scale)×0.5f;
-    app.offset_y=(h-720.0f×app.scale)×0.5f;
+    SwapCanvas canvas=swap_canvas_for_screen(w,h);
+    app.scale=canvas.scale;
+    app.offset_x=canvas.offset_x;
+    app.offset_y=canvas.offset_y;
     sgl_defaults();
     sgl_viewport((int)app.offset_x,(int)app.offset_y,
                  (int)(360×app.scale),(int)(720×app.scale),true);
@@ -134,7 +130,7 @@ static void draw_strand(SwapOrder order,SwapMove move,unsigned id,double upto,
     }
 }
 static void draw_rivers(void) {
-    const float top=276, row_height=27;
+    const float top=276, row_height=25;
     size_t completed=swap_completed(&app.scene);
     /* Display is a viewport, not truncation of the stored word. Replay starts
        at the original three sources and visits every stored crossing. */
@@ -193,77 +189,114 @@ static void draw_rivers(void) {
     if(app.drag_slot>=0) {
         SwapOrder at=swap_order_at(&app.scene,app.scene.count);
         unsigned id=at.at[app.drag_slot];
-        line(app.head[app.drag_slot],app.pointer,3,ink[id]);
+        line(app.press_origin,app.pointer,3,ink[id]);
         disc(app.pointer,12,ink[id]); identity_label(app.pointer,id);
+        SwapMove preview;
+        if(swap_drag_move(app.drag_slot,app.press_origin,app.pointer,
+                          app.dragged_over,&preview)) {
+            char text[52];
+            snprintf(text,sizeof(text),"STRAND %u %s / PAIR %u",
+                     id+1,app.dragged_over?"OVER":"UNDER",
+                     (unsigned)preview.adjacent+1);
+            label(14,226,text,text_colour);
+        }
     }
 }
 static void command(int command) {
     if(command<4) {
         SwapMove move={(uint8_t)(command%2),(int8_t)(command<2?1:-1)};
         SwapResult result=swap_append(&app.scene,move);
-        app.notice=result==SWAP_HISTORY_FULL ? "HISTORY FULL - REPLAY OR RESET" :
-                   result==SWAP_BUSY ? "FINISH OR RESUME THIS MOVE FIRST" : NULL;
-    } else if(command==4) { swap_reset(&app.scene); app.notice=NULL; }
-    else if(command==5) { swap_replay(&app.scene); app.notice=NULL; }
-    else if(command==6) app.scene.paused=!app.scene.paused;
+        app.notice=result==SWAP_HISTORY_FULL ? "HISTORY FULL - RESET" :
+                   result==SWAP_BUSY ? "CROSSING BUSY" :
+                   result==SWAP_ACCEPTED ? "CROSSING ADDED" : "INVALID MOVE";
+    } else if(command==SWAP_RESET) {
+        swap_reset(&app.scene); app.notice="RESET";
+    } else if(command==SWAP_REPLAY) {
+        swap_replay(&app.scene); app.notice="REPLAY";
+    } else if(command==SWAP_PAUSE) {
+        app.scene.paused=!app.scene.paused;
+        app.notice=app.scene.paused?"PAUSED":"RESUMED";
+    } else if(command==SWAP_DRAG_OVER || command==SWAP_DRAG_UNDER) {
+        app.dragged_over=command==SWAP_DRAG_OVER;
+        app.notice=app.dragged_over ? "DRAGGED STRAND GOES OVER" :
+                                     "DRAGGED STRAND GOES UNDER";
+    }
 }
 static Point2 pointer_position(float x,float y) {
-    return (Point2){(x-app.offset_x)÷app.scale,(y-app.offset_y)÷app.scale};
-}
-static bool inside(Point2 p,const Button *b) {
-    return p.x>=b->x && p.x<=b->x+b->w && p.y>=b->y && p.y<=b->y+b->h;
+    SwapCanvas canvas={app.scale,app.offset_x,app.offset_y};
+    return swap_pointer_on_canvas(canvas,x,y);
 }
 static void pointer_down(Point2 p) {
-    app.pointer=p; app.drag_slot=-1;
-    for(unsigned i=0;i<sizeof(buttons)÷sizeof(buttons[0]);++i)
-        if(inside(p,&buttons[i])) { command(buttons[i].command); return; }
-    if(app.scene.cursor<(double)app.scene.count) return;
-    for(unsigned slot=0;slot<3;++slot)
-        if(hypotf(p.x-app.head[slot].x,p.y-app.head[slot].y)<24)
-            app.drag_slot=(int)slot;
+    app.pointer=p; app.drag_slot=-1; app.pressed_button=-1;
+    int button=swap_button_at(p);
+    if(button>=0) {
+        app.pressed_button=button;
+        return;
+    }
+    app.drag_slot=swap_head_at(p,app.head_y);
+    if(app.drag_slot>=0) {
+        app.press_origin=app.head[app.drag_slot];
+    } else {
+        app.notice="TOUCH A COLOURED DOT OR CONTROL";
+    }
 }
 static void pointer_up(Point2 p) {
-    if(app.drag_slot>=0) {
-        int target=(int)lroundf((p.x-86)÷94);
-        if(target>=0 && target<3 && abs(target-app.drag_slot)==1) {
-            unsigned pair=(unsigned)(target<app.drag_slot?target:app.drag_slot);
-            /* Above/below describes the DRAGGED identity. Convert that to
-               left-slot over/under convention used by the stored generator. */
-            int dragged_sign=p.y<=app.head_y ? 1 : -1;
-            int sign=app.drag_slot==(int)pair ? dragged_sign : -dragged_sign;
-            command((int)pair+(sign>0?0:2));
-        }
+    app.pointer=p;
+    if(app.pressed_button>=0) {
+        if(swap_point_on_button(p,(unsigned)app.pressed_button)) {
+            command(swap_buttons[app.pressed_button].command);
+        } else app.notice="BUTTON CANCELLED";
+    } else if(app.drag_slot>=0) {
+        SwapMove move;
+        if(swap_drag_move(app.drag_slot,app.press_origin,p,app.dragged_over,&move)) {
+            SwapResult result=swap_append(&app.scene,move);
+            app.notice=result==SWAP_ACCEPTED ? "DRAG CROSSING ADDED" :
+                       result==SWAP_HISTORY_FULL ? "HISTORY FULL - RESET" :
+                       result==SWAP_BUSY ? "CROSSING BUSY" : "INVALID DRAG";
+        } else app.notice="DRAG LEFT OR RIGHT TO A NEIGHBOUR";
     }
-    app.drag_slot=-1;
+    app.drag_slot=-1; app.pressed_button=-1;
 }
 static void event(const sapp_event *event) {
-    if(event->type==SAPP_EVENTTYPE_MOUSE_DOWN && event->mouse_button==SAPP_MOUSEBUTTON_LEFT)
+    if(event->type==SAPP_EVENTTYPE_MOUSE_DOWN &&
+       event->mouse_button==SAPP_MOUSEBUTTON_LEFT && !app.touch_active) {
         pointer_down(pointer_position(event->mouse_x,event->mouse_y));
-    else if(event->type==SAPP_EVENTTYPE_MOUSE_MOVE)
+    } else if(event->type==SAPP_EVENTTYPE_MOUSE_MOVE && !app.touch_active) {
         app.pointer=pointer_position(event->mouse_x,event->mouse_y);
-    else if(event->type==SAPP_EVENTTYPE_MOUSE_UP && event->mouse_button==SAPP_MOUSEBUTTON_LEFT)
+    } else if(event->type==SAPP_EVENTTYPE_MOUSE_UP &&
+              event->mouse_button==SAPP_MOUSEBUTTON_LEFT && !app.touch_active) {
         pointer_up(pointer_position(event->mouse_x,event->mouse_y));
-    else if(event->type==SAPP_EVENTTYPE_TOUCHES_BEGAN && !app.touch_active) {
+    } else if(event->type==SAPP_EVENTTYPE_TOUCHES_BEGAN && !app.touch_active) {
         for(int i=0;i<event->num_touches;++i) if(event->touches[i].changed) {
-            app.touch_id=event->touches[i].identifier; app.touch_active=true;
-            pointer_down(pointer_position(event->touches[i].pos_x,event->touches[i].pos_y)); break;
+            app.touch_id=event->touches[i].identifier;
+            app.touch_active=true;
+            pointer_down(pointer_position(event->touches[i].pos_x,
+                                          event->touches[i].pos_y));
+            break;
         }
-    } else if(event->type==SAPP_EVENTTYPE_TOUCHES_MOVED || event->type==SAPP_EVENTTYPE_TOUCHES_ENDED) {
+    } else if(event->type==SAPP_EVENTTYPE_TOUCHES_MOVED ||
+              event->type==SAPP_EVENTTYPE_TOUCHES_ENDED) {
         for(int i=0;i<event->num_touches;++i)
-            if(app.touch_active && event->touches[i].identifier==app.touch_id && event->touches[i].changed) {
-                app.pointer=pointer_position(event->touches[i].pos_x,event->touches[i].pos_y);
+            if(app.touch_active && event->touches[i].identifier==app.touch_id &&
+               (event->touches[i].changed || event->type==SAPP_EVENTTYPE_TOUCHES_ENDED)) {
+                app.pointer=pointer_position(event->touches[i].pos_x,
+                                             event->touches[i].pos_y);
                 if(event->type==SAPP_EVENTTYPE_TOUCHES_ENDED) {
-                    pointer_up(app.pointer); app.touch_active=false;
+                    pointer_up(app.pointer);
+                    app.touch_active=false;
                 }
+                break;
             }
     } else if(event->type==SAPP_EVENTTYPE_TOUCHES_CANCELLED ||
-              event->type==SAPP_EVENTTYPE_UNFOCUSED || event->type==SAPP_EVENTTYPE_SUSPENDED) {
-        app.touch_active=false; app.drag_slot=-1;
+              event->type==SAPP_EVENTTYPE_UNFOCUSED ||
+              event->type==SAPP_EVENTTYPE_SUSPENDED) {
+        app.touch_active=false; app.drag_slot=-1; app.pressed_button=-1;
         if(event->type==SAPP_EVENTTYPE_SUSPENDED) app.scene.paused=true;
     }
 }
 static void init(void) {
-    swap_reset(&app.scene); app.drag_slot=-1; app.scale=1;
+    swap_reset(&app.scene); app.drag_slot=-1; app.pressed_button=-1;
+    app.dragged_over=true; app.scale=1;
     sg_setup(&(sg_desc){.environment=sglue_environment(),.logger.func=slog_func});
     sgl_setup(&(sgl_desc_t){.max_vertices=60000,.max_commands=6000,.logger.func=slog_func});
     sdtx_setup(&(sdtx_desc_t){.fonts={sdtx_font_kc853()},.logger.func=slog_func});
@@ -276,15 +309,21 @@ static void frame(void) {
     label(14,16,"SWAP",text_colour);
     label(174,16,"THREE STRANDS / TRIANGLE",text_colour);
     draw_triangle_view(); draw_rivers();
-    label(14,538,"DRAG A DOT TO ITS NEIGHBOUR",text_colour);
-    label(14,552,"ABOVE: OVER   BELOW: UNDER",text_colour);
-    for(unsigned i=0;i<sizeof(buttons)÷sizeof(buttons[0]);++i) {
-        const Button *b=&buttons[i];
-        rectangle(b->x,b->y,b->w,b->h,(Colour){0.13f,0.17f,0.23f});
-        const char *title=b->command==6 && app.scene.paused ? "RESUME" : b->label;
-        label(b->x+10,b->y+15,title,text_colour);
+    label(14,496,"DRAG HORIZONTALLY / CHOOSE DEPTH",text_colour);
+    for(unsigned i=0;i<SWAP_BUTTON_COUNT;++i) {
+        const SwapButton *b=&swap_buttons[i];
+        bool selected=(b->command==SWAP_DRAG_OVER && app.dragged_over) ||
+                      (b->command==SWAP_DRAG_UNDER && !app.dragged_over);
+        bool pressed=app.pressed_button==(int)i;
+        Colour fill=selected ? (Colour){0.28f,0.32f,0.39f} :
+                    pressed ? (Colour){0.30f,0.26f,0.37f} :
+                              (Colour){0.13f,0.17f,0.23f};
+        rectangle(b->x,b->y,b->width,b->height,fill);
+        const char *title=b->command==SWAP_PAUSE && app.scene.paused ?
+                          "RESUME" : b->title;
+        label(b->x+10,b->y+16,title,text_colour);
     }
-    if(app.notice) label(14,658,app.notice,text_colour);
+    if(app.notice) label(14,229,app.notice,text_colour);
     sg_begin_pass(&(sg_pass){
         .action.colors[0]={.load_action=SG_LOADACTION_CLEAR,
                           .clear_value={background.r,background.g,background.b,1}},

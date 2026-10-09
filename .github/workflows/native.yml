@@ -40,6 +40,31 @@ jobs:
       - name: Shell syntax
         run: |
           for script in scripts/*.sh; do bash -n "$script"; done
+  idric-semantics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      # Independent checked-language lane. It does not certify Android Idriç
+      # machine code; the APK still uses the native C input/model adapter.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: isomorphisms/Idric
+          ref: 94dfd99bd3e376507fedc8611053b7173b2519f0
+          path: .idric-compiler
+          persist-credentials: false
+      - name: Bootstrap exact Idriç compiler
+        run: |
+          cd .idric-compiler
+          ./edric bootstrap
+      - name: Typecheck and run Swap's Idriç semantic/touch tests
+        run: |
+          cd idric
+          ../.idric-compiler/_/build/exec/idris2 --build swap.ipkg
+          ./build/exec/swap-idric-tests
   android-native:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -68,22 +93,22 @@ jobs:
           ICK_CC: ${{ steps.compiler.outputs.compiler }}
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.path }}
         run: bash scripts/android-build.sh '${{ matrix.abi }}'
-      # Requested A1 smoke-test exception: disposable signer for a single run.
+      # C67 input test build: disposable signer for a single run.
       # This is not a release signer: no private key or password is uploaded or kept.
-      - name: Install A1 APK packaging inputs
+      - name: Install C67 APK packaging inputs
         if: matrix.abi == 'armeabi-v7a'
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
-      - name: Create disposable A1 key and package test APK
+      - name: Sign and package C67 input test APK
         if: matrix.abi == 'armeabi-v7a'
         shell: bash
         run: |
           set -Eeuo pipefail
           umask 077
           export ANDROID_BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
-          export ANDROID_KEYSTORE="$RUNNER_TEMP/swap-a1-test-only.p12"
+          export ANDROID_KEYSTORE="$RUNNER_TEMP/swap-c67-test-only.p12"
           export ANDROID_KEYSTORE_TYPE=PKCS12
-          export ANDROID_KEY_ALIAS=swap-a1-test
+          export ANDROID_KEY_ALIAS=swap-c67-test
           export ANDROID_STORE_PASSWORD
           ANDROID_STORE_PASSWORD=$(openssl rand -hex 32)
           export ANDROID_KEY_PASSWORD="$ANDROID_STORE_PASSWORD"
@@ -91,7 +116,7 @@ jobs:
           keytool -genkeypair -noprompt \
             -keystore "$ANDROID_KEYSTORE" -storetype "$ANDROID_KEYSTORE_TYPE" \
             -alias "$ANDROID_KEY_ALIAS" -keyalg RSA -keysize 3072 \
-            -validity 30 -dname 'CN=Swap A1 disposable test,O=Swap' \
+            -validity 30 -dname 'CN=Swap C67 disposable test,O=Swap' \
             -storepass "$ANDROID_STORE_PASSWORD" -keypass "$ANDROID_KEY_PASSWORD"
           export ANDROID_EXPECTED_CERT_SHA256
           ANDROID_EXPECTED_CERT_SHA256=$(keytool -exportcert \
@@ -101,13 +126,13 @@ jobs:
           bash scripts/android-package.sh armeabi-v7a
           test -s dist/swap-armeabi-v7a.apk
           rm -f -- "$ANDROID_KEYSTORE"
-          echo 'A1 TEST APK ONLY: every workflow run has a new signer.'
-          echo 'Uninstall an earlier Swap test APK before installing a later build.'
-      - name: Upload A1 test APK and verification receipt
+          echo 'C67 INPUT TEST APK: every workflow run has a new signer.'
+          echo 'Original Swap stays installed; replace this test variant by uninstalling first.'
+      - name: Upload C67 input test APK and verification receipt
         if: matrix.abi == 'armeabi-v7a'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: swap-a1-test-apk
+          name: swap-c67-input-test-apk
           path: |
             dist/swap-armeabi-v7a.apk
             dist/swap-armeabi-v7a.receipt.tsv

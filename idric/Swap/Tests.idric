@@ -1,0 +1,168 @@
+module Swap.Tests
+
+import Swap.Model
+import Swap.Geometry
+import Swap.Input
+import Data.Text
+import System
+
+assert_test : Text → Bool → IO ()
+assert_test name True = putStrLn ("PASS " ++ name)
+assert_test name False = do
+  putStrLn ("FAIL " ++ name)
+  exitFailure
+
+same_pair : adjacent_pair → adjacent_pair → Bool
+same_pair first_pair first_pair = True
+same_pair second_pair second_pair = True
+same_pair _ _ = False
+
+same_depth : crossing_depth → crossing_depth → Bool
+same_depth left_over left_over = True
+same_depth left_under left_under = True
+same_depth _ _ = False
+
+same_crossing : Crossing → Crossing → Bool
+same_crossing a b = same_pair (adjacent a) (adjacent b) &&
+                    same_depth (depth a) (depth b)
+
+crossing_matches : Maybe Crossing → Crossing → Bool
+crossing_matches (Just actual) expected = same_crossing actual expected
+crossing_matches Nothing _ = False
+
+same_control : control → control → Bool
+same_control left_over_button left_over_button = True
+same_control right_over_button right_over_button = True
+same_control left_under_button left_under_button = True
+same_control right_under_button right_under_button = True
+same_control reset_button reset_button = True
+same_control replay_button replay_button = True
+same_control pause_button pause_button = True
+same_control drag_over_button drag_over_button = True
+same_control drag_under_button drag_under_button = True
+same_control _ _ = False
+
+control_matches : Maybe control → control → Bool
+control_matches (Just actual) expected = same_control actual expected
+control_matches Nothing _ = False
+
+all_buttons_work : List control → CanvasMapping → Bool
+all_buttons_work [] mapping = True
+all_buttons_work (button :: rest) mapping =
+  let bounds = control_bounds button
+      cx = left bounds + width bounds ÷ 2.0
+      cy = top bounds + height bounds ÷ 2.0
+      pixels = MkScreenPoint (cx × scale mapping + offset_x mapping)
+                             (cy × scale mapping + offset_y mapping)
+   in control_matches (hit_control (on_canvas mapping pixels)) button &&
+      all_buttons_work rest mapping
+
+near : Double → Double → Bool
+near a b = abs (a-b) < 0.000000001
+
+pairwise_triangle : Ordering → Crossing → Double → Bool
+pairwise_triangle before crossing time =
+  let a = triangle_during before crossing time coral
+      b = triangle_during before crossing time cyan
+      c = triangle_during before crossing time amber
+      side = sqrt 3.0
+   in near (distance a b) side &&
+      near (distance b c) side &&
+      near (distance c a) side
+
+is_pressed : contact → control → Bool
+is_pressed (pressed_button first) second = same_control first second
+is_pressed _ _ = False
+
+is_strand : contact → slot → Bool
+is_strand (grabbed_strand first_slot) first_slot = True
+is_strand (grabbed_strand second_slot) second_slot = True
+is_strand (grabbed_strand third_slot) third_slot = True
+is_strand _ _ = False
+
+is_crossing : Maybe accepted_gesture → Crossing → Bool
+is_crossing (Just (completed_crossing result)) expected =
+  same_crossing result expected
+is_crossing _ _ = False
+
+is_control : Maybe accepted_gesture → control → Bool
+is_control (Just (selected_control result)) expected =
+  same_control result expected
+is_control _ _ = False
+
+main : IO ()
+main = do
+  let left_turn = MkCrossing first_pair left_over
+  let right_turn = MkCrossing second_pair left_over
+  let left_reverse = inverse left_turn
+  assert_test "inverse restores permutation"
+    (same_order (order_after [left_turn,left_reverse]) initial_order)
+  assert_test "same sign keeps braid winding"
+    (same_order (order_after [left_turn,left_turn]) initial_order &&
+     writhe [left_turn,left_turn] ≟ 2)
+  assert_test "braid relation preserves endpoints"
+    (same_order (order_after [left_turn,right_turn,left_turn])
+                (order_after [right_turn,left_turn,right_turn]))
+  assert_test "crossing order matters"
+    (not (same_order (order_after [left_turn,right_turn])
+                     (order_after [right_turn,left_turn])))
+
+  case queue_crossing left_turn initial_history of
+    Nothing => assert_test "first move can be queued" False
+    Just one =>
+      case queue_crossing right_turn one of
+        Nothing => assert_test "second move can be queued" False
+        Just two => do
+          assert_test "rapid moves are retained"
+            (length (crossings two) ≟ 2 && near (visible_cursor two) 0.0)
+          assert_test "pause freezes animation"
+            (near (visible_cursor (advance 1.0 (toggle_pause two))) 0.0)
+          assert_test "animation advances"
+            (near (visible_cursor (advance 0.8 two)) 1.0)
+          assert_test "replay preserves the recorded word"
+            (length (crossings (replay two)) ≟ 2)
+
+  let mapping = canvas_mapping 576.0 1152.0
+  assert_test "C67: nine buttons hit in screen pixels"
+    (all_buttons_work all_controls mapping)
+  assert_test "letterbox conversion"
+    (near (canvas_x (on_canvas (canvas_mapping 720.0 1152.0)
+                                    (MkScreenPoint 552.0 800.0))) 300.0)
+
+  let button_touch = MkCanvasPoint 94.0 573.0
+  let touch = begin_contact button_touch 300.0
+  assert_test "button down remembers its identity"
+    (is_pressed touch left_over_button)
+  assert_test "button up executes correct command"
+    (is_control (finish_contact touch button_touch True) left_over_button)
+  assert_test "drag off button cancels"
+    (case finish_contact touch (MkCanvasPoint 94.0 650.0) True of
+       Nothing => True
+       _ => False)
+
+  let dot = MkCanvasPoint 180.0 475.0
+  let grabbed = begin_contact dot 475.0
+  assert_test "middle strand can be grabbed"
+    (is_strand grabbed second_slot)
+  assert_test "drag right over makes positive second crossing"
+    (is_crossing (finish_contact grabbed (MkCanvasPoint 260.0 495.0) True)
+                 (MkCrossing second_pair left_over))
+  assert_test "drag left over makes inverse-handed first crossing"
+    (is_crossing (finish_contact grabbed (MkCanvasPoint 100.0 495.0) True)
+                 (MkCrossing first_pair left_under))
+  assert_test "drag under explicitly reverses depth"
+    (is_crossing (finish_contact grabbed (MkCanvasPoint 260.0 430.0) False)
+                 (MkCrossing second_pair left_under))
+  assert_test "small motion does not accidentally cross"
+    (case finish_contact grabbed (MkCanvasPoint 195.0 540.0) True of
+       Nothing => True
+       _ => False)
+
+  assert_test "triangle stays rigid in mid-flip"
+    (pairwise_triangle initial_order left_turn 0.5)
+  let raised = crossing_during initial_order left_turn 0.5 coral
+  assert_test "positive crossing raises the left strand" (z raised > 0.29)
+  assert_test "triangle reaches exchanged resting vertex"
+    (near (distance (triangle_during initial_order left_turn 1.0 coral)
+                    (triangle_slot second_slot)) 0.0)
+  putStrLn "Swap Idriç: host semantics and touch assertions passed"

@@ -1,0 +1,61 @@
+module Swap.Raw.GuaranteeTests
+
+import Swap.Raw.Guarantee
+import Swap.Raw.Examples
+import System
+
+-- Exhaustive aggregate certificates for every action and both model states.
+-- Each positive Refl reduces the WHOLE 64-address result comparison.
+pair_witness : (command : operation_name) → (before : Bool) →
+               Not (perform aggregate_pair command before = before) →
+               VisibleChange aggregate_pair command before
+pair_witness exchange_pair False changed = ChangedResultRegion Refl
+pair_witness exchange_pair True changed = ChangedResultRegion Refl
+pair_witness put_in_initial_order False changed = void (changed Refl)
+pair_witness put_in_initial_order True changed = ChangedResultRegion Refl
+pair_witness normalize_sign False changed = void (changed Refl)
+pair_witness normalize_sign True changed = ChangedResultRegion Refl
+
+public export
+responsive_pair : Responsive aggregate_pair
+responsive_pair = EveryChangeIsVisible pair_witness
+
+formula_witness : (command : operation_name) → (before : Bool) →
+                  Not (perform aggregate_formula command before = before) →
+                  VisibleChange aggregate_formula command before
+formula_witness exchange_pair False changed = ChangedResultRegion Refl
+formula_witness exchange_pair True changed = ChangedResultRegion Refl
+formula_witness put_in_initial_order False changed = void (changed Refl)
+formula_witness put_in_initial_order True changed = ChangedResultRegion Refl
+formula_witness normalize_sign False changed = void (changed Refl)
+formula_witness normalize_sign True changed = ChangedResultRegion Refl
+
+public export
+responsive_formula : Responsive aggregate_formula
+responsive_formula = EveryChangeIsVisible formula_witness
+
+failing
+  certify_single_pixel_with_region_proof : Responsive single_pixel_behaviour
+  certify_single_pixel_with_region_proof = responsive_pair
+
+failing
+  certify_stale_formula_with_good_proof : Responsive stale_result_behaviour
+  certify_stale_formula_with_good_proof = responsive_formula
+
+is_visible : Response behaviour command before → Bool
+is_visible (NeedsDrawing _ _) = True
+is_visible _ = False
+
+assert_guarantee : Text → Bool → IO ()
+assert_guarantee name True = putStrLn ("PASS " ++ name)
+assert_guarantee name False = do
+  putStrLn ("FAIL " ++ name)
+  exitFailure
+
+export
+run_guarantee_tests : IO ()
+run_guarantee_tests = do
+  assert_guarantee "certified pair action supplies a whole-region certificate"
+    (is_visible (respond_with_guarantee aggregate_pair responsive_pair exchange_pair False))
+  assert_guarantee "certified formula action supplies a whole-region certificate"
+    (is_visible (respond_with_guarantee aggregate_formula responsive_formula normalize_sign True))

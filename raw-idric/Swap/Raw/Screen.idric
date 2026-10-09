@@ -1,0 +1,119 @@
+module Swap.Raw.Screen
+
+import public Data.Fin
+import public Data.List
+import public Data.Text
+
+-- Paint and picking sample ONE fully composed, clipped picture.
+-- Fin implements a bounded framebuffer address, not a mathematical vector.
+-- Native coordinate conversion happens before this exact raster boundary.
+
+public export
+record Canvas where
+  constructor CanvasSize
+  columns : Number
+  rows : Number
+
+public export
+record PixelAddress (canvas : Canvas) where
+  constructor PixelAt
+  column : Fin (columns canvas)
+  row : Fin (rows canvas)
+
+public export
+choice pigment one_of
+  background_ink
+  coral_ink
+  cyan_ink
+  amber_ink
+  paper_ink
+
+-- Explicit machine representation only at the colour-encoding boundary.
+-- The named palette is opaque RGB8 in the low 24 bits of this word.
+public export
+PackedColour : Type
+PackedColour = Bits32
+
+-- Lowering must use alpha 255, no blending, dithering, colour conversion or
+-- multisampling for this exact-pixel lane. Machine words also avoid expanding
+-- multi-million-sized whole numbers in type-level colour comparisons.
+public export
+colour_code : pigment → PackedColour
+colour_code background_ink = 0x101018
+colour_code coral_ink = 0xF05C70
+colour_code cyan_ink = 0x47BFE8
+colour_code amber_ink = 0xFAC733
+colour_code paper_ink = 0xE0E6F0
+
+public export
+choice target_kind one_of
+  button_target
+  formula_target
+  strand_target
+
+public export
+record Target (action : Type) where
+  constructor NamedTarget
+  kind : target_kind
+  object_identity : Number
+  description : Text
+  operation : action
+
+public export
+record PaintedSample (action : Type) where
+  constructor PaintSample
+  ink : pigment
+  owner : Maybe (Target action)
+
+public export
+Picture : Canvas → Type → Type
+Picture canvas action = PixelAddress canvas → PaintedSample action
+
+-- Nothing is transparent coverage, NOT a visible unowned object.
+-- An opaque object with owner Nothing blocks both paint and picking below it.
+public export
+paint_over : Maybe (PaintedSample action) → PaintedSample action → PaintedSample action
+paint_over Nothing below = below
+paint_over (Just above) below = above
+
+export
+number_to_address : (number : Number) → (bound : Number) → Maybe (Fin bound)
+number_to_address _ Z = Nothing
+number_to_address Z (S bound) = Just FZ
+number_to_address (S number) (S bound) = map FS (number_to_address number bound)
+
+export
+pixel_at : (canvas : Canvas) → Number → Number → Maybe (PixelAddress canvas)
+pixel_at canvas x y = do
+  column ← number_to_address x (columns canvas)
+  row ← number_to_address y (rows canvas)
+  pure (PixelAt column row)
+
+public export
+pixel_indices : (bound : Number) → List (Fin bound)
+pixel_indices Z = []
+pixel_indices (S bound) = FZ :: map FS (pixel_indices bound)
+
+public export
+all_pixels : (canvas : Canvas) → List (PixelAddress canvas)
+all_pixels canvas = concatMap
+  (\row => map (\column => PixelAt column row) (pixel_indices (columns canvas)))
+  (pixel_indices (rows canvas))
+
+public export
+record Hit {canvas : Canvas} {action : Type}
+           (picture : Picture canvas action) (point : PixelAddress canvas) where
+  constructor HitPaintedTarget
+  target : Target action
+  belongs_to_painted_pixel : owner (picture point) = Just target
+
+inspect_value : (original : value_type) → (observed : value_type ** original = observed)
+inspect_value original = (original ** Refl)
+
+export
+pick_painted_target : (picture : Picture canvas action) →
+                      (point : PixelAddress canvas) → Maybe (Hit picture point)
+pick_painted_target picture point =
+  case inspect_value (owner (picture point)) of
+    (Nothing ** _) => Nothing
+    (Just target ** evidence) => Just (HitPaintedTarget target evidence)

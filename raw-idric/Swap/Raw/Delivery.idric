@@ -1,0 +1,78 @@
+module Swap.Raw.Delivery
+
+import public Swap.Raw.Contact
+import public Swap.Raw.Guarantee
+import public Swap.Raw.Snapshot
+
+-- The application entry requires submitted source pictures, the global
+-- responsiveness law, and a fresh output key. It returns an opaque linear
+-- obligation belonging to the same native boundary. No exported destructor.
+export
+data ResponseDebt : (boundary : NativeBoundary canvas action) →
+                    FrameKey → (behaviour : Behaviour model action canvas) →
+                    (command : action) → (before : model) → Type where
+  ResultStillOwed : Response behaviour command before → ResponseDebt boundary key behaviour command before
+
+export
+owe_released_response : {canvas : Canvas} →
+                        {previous_picture : Picture canvas action} →
+                        {press_point : PixelAddress canvas} →
+                        {contact : Contact previous_picture press_point} →
+                        (boundary : NativeBoundary canvas action) →
+                        (behaviour : Behaviour model action canvas) →
+                        Responsive behaviour → (current : model) →
+                        (point : PixelAddress canvas) → (event : TouchEvent) →
+                        (0 press_snapshot : SubmittedSnapshot boundary (frame (press contact)) previous_picture) →
+                        (0 current_snapshot : SubmittedSnapshot boundary (frame event) (draw behaviour current)) →
+                        (released : Released contact (draw behaviour current) point event) →
+                        (output : FrameKey) → valid_followup_frame event output = True →
+                        L1 IO (ResponseDebt boundary output behaviour
+                          (operation (target (current_target released))) current)
+owe_released_response boundary behaviour responsive current point event
+                      press_snapshot current_snapshot released output linked =
+  pure1 (ResultStillOwed (respond_with_guarantee behaviour responsive
+    (operation (target (current_target released))) current))
+
+-- Native failure retains the obligation. The view failure is defensive for
+-- the common reference representation; the certified entry cannot produce it.
+public export
+data DeliveryResult : (boundary : NativeBoundary canvas action) →
+                      FrameKey → (behaviour : Behaviour model action canvas) →
+                      (command : action) → (before : model) → Type where
+  FixedPointComplete : perform behaviour command before = before →
+                       (1 window : Window boundary (surface_epoch key)) →
+                       DeliveryResult boundary key behaviour command before
+  ResultSubmitted : (1 receipt : Submitted boundary key
+                      (draw behaviour (perform behaviour command before))) →
+                    DeliveryResult boundary key behaviour command before
+  NativeRetryRequired : native_failure →
+                        (1 debt : ResponseDebt boundary key behaviour command before) →
+                        DeliveryResult boundary key behaviour command before
+  ViewContractFailed : (1 debt : ResponseDebt boundary key behaviour command before) →
+                       (1 window : Window boundary (surface_epoch key)) →
+                       DeliveryResult boundary key behaviour command before
+
+export
+deliver_response : {canvas : Canvas} →
+                   (boundary : NativeBoundary canvas action) →
+                   (key : FrameKey) → (behaviour : Behaviour model action canvas) →
+                   (command : action) → (before : model) →
+                   (1 debt : ResponseDebt boundary key behaviour command before) →
+                   (1 window : Window boundary (surface_epoch key)) →
+                   L1 IO (DeliveryResult boundary key behaviour command before)
+deliver_response boundary key behaviour command before (ResultStillOwed response) window =
+  case response of
+    AtFixedPoint fixed => pure1 (FixedPointComplete fixed window)
+    UnobservableChange changed =>
+      pure1 (ViewContractFailed (ResultStillOwed (UnobservableChange changed)) window)
+    NeedsDrawing changed witness => do
+      result ← submit_changed_result boundary behaviour key command before witness window
+      case result of
+        NativeReady receipt => pure1 (ResultSubmitted receipt)
+        NativeFailed reason =>
+          pure1 (NativeRetryRequired reason (ResultStillOwed (NeedsDrawing changed witness)))
+
+-- The native sequencer still validates actual frame/event freshness and reserves
+-- output IDs uniquely. A reusable submitted fact is not proof that its frame is
+-- currently on the physical panel. Queue one debt per accepted action; do not
+-- replace rapid operations with their final endpoint permutation.

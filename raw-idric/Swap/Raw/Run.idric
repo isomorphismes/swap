@@ -1,0 +1,11 @@
+module Swap.Raw.Run
+
+import Swap.Raw.Tests
+import Swap.Raw.ContactTests
+import Swap.Raw.GuaranteeTests
+
+main : IO ()
+main = do
+  Swap.Raw.Tests.main
+  run_contact_tests
+  run_guarantee_tests

@@ -1,19 +1,29 @@
-# Swap
+# Swap — raw Idriç experiment
 
-Read README.md and docs/android.md before build changes. Preserve the three-way
-boundary between mathematical identities/actions, numerical animation and GPU
-rendering. Idriç sketches are design documents until explicitly typechecked.
+The user explicitly requested a raw Idriç branch connecting touch, operations,
+and their visible NDK-graphics response. Active work is in raw-idric/. Read its
+README and contracts before changing it. Sokol, SDL, raylib, and C copies of
+application semantics are not the implementation route for this branch.
 
-The current requested visual scope is three coloured braid strands and one
-correspondingly coloured, genuinely flipping triangle. Record further ideas
-in docs/mathematics.md without treating them as required extra modes. Do not
-replace the exploration with factorial drills or exhaustive enumeration.
+Preserve the other prototypes for comparison without presenting their APKs,
+C tests or renderer as raw-Idriç evidence. Do not modify other branches.
 
-Keep signed braid history distinct from endpoint permutations. Preserve colour
-identity across slots and triangle edges. Never call an endpoint comparison a
-braid-equivalence test. Splitting/merging rivers are not ordinary braid moves.
+Apply isomorphisms/Idric STYLE.md at the pinned compiler revision. New source
+uses .idric, Number, Text, owned Unicode arithmetic and named domain roles.
+Indexed data declarations are a documented bootstrap grammar limitation,
+not a new language design. Use the compiler's totality and linear checks;
+never insert an assumed proof, unchecked coercion, hole, or fallback compiler.
 
-Use the declared ICK/NDK stages, pinned shared qualification and Android
-NativeActivity packager. No generated or fallback signing key, no undeclared
-compiler substitution. Keep owned mathematical ×/÷ and pointer syntax separate.
-Report model, compiler, native link, graphics, APK and device evidence separately.
+Bind hits to painted geometry, changes to exact action/state results, and
+native receipts to exact epoch/frame/picture. Keep semantic fixed points,
+invisible transitions, input acknowledgements, drawn pixels, submitted buffers,
+and physical display evidence distinct. A busy flag or counter is not a
+substitute for a meaningful visible result.
+
+Preserve signed braid history separately from endpoint permutations when
+porting the real scenes. Two same-sign crossings can restore the endpoint
+pose while leaving different history.
+
+Host tests, typechecks, native lowering, GPU rendering and on-phone behavior
+are separate acceptance claims. No generated signing key, native fallback,
+engine substitution or new APK claim is authorized by a contract-only result.

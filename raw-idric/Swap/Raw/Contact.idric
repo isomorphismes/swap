@@ -1,0 +1,136 @@
+module Swap.Raw.Contact
+
+import public Swap.Raw.Native
+
+-- Capture an identity in a painted frame. A touch has its OWN event serial;
+-- the observed frame's input_serial names the earlier event that produced it.
+public export
+choice touch_phase one_of
+  contact_began
+  contact_ended
+  contact_cancelled
+
+public export
+record TouchEvent where
+  constructor PointerEvent
+  frame : FrameKey
+  event_serial : Number
+  pointer_identity : Number
+  phase : touch_phase
+
+public export
+is_press : TouchEvent → Bool
+is_press event = case phase event of
+  contact_began => True
+  _ => False
+
+public export
+is_release : TouchEvent → Bool
+is_release event = case phase event of
+  contact_ended => True
+  _ => False
+
+public export
+coherent_release : TouchEvent → TouchEvent → Bool
+coherent_release press release =
+  is_release release &&
+  pointer_identity press ≟ pointer_identity release &&
+  surface_epoch (frame press) ≟ surface_epoch (frame release) &&
+  viewport_revision (frame press) ≟ viewport_revision (frame release) &&
+  frame_revision (frame release) >= frame_revision (frame press) &&
+  event_serial release > event_serial press
+
+-- A result gets a NEW frame key, on the same surface/viewport, attributed to
+-- this release. The native sequencer must also reserve that key uniquely.
+public export
+valid_followup_frame : TouchEvent → FrameKey → Bool
+valid_followup_frame event output =
+  surface_epoch output ≟ surface_epoch (frame event) &&
+  viewport_revision output ≟ viewport_revision (frame event) &&
+  frame_revision output > frame_revision (frame event) &&
+  input_serial output ≟ event_serial event
+
+public export
+kind_code : target_kind → Number
+kind_code button_target = 0
+kind_code formula_target = 1
+kind_code strand_target = 2
+
+public export
+record Contact {canvas : Canvas} {action : Type}
+               (picture : Picture canvas action) (point : PixelAddress canvas) where
+  constructor CapturePaintedIdentity
+  press : TouchEvent
+  pressed_target : Hit picture point
+  began_with_press : is_press press = True
+
+export
+begin_contact : (event : TouchEvent) → (picture : Picture canvas action) →
+                (point : PixelAddress canvas) → Maybe (Contact picture point)
+begin_contact event picture point =
+  case decEq (is_press event) True of
+    No _ => Nothing
+    Yes began =>
+      case pick_painted_target picture point of
+        Nothing => Nothing
+        Just hit => Just (CapturePaintedIdentity event hit began)
+
+public export
+choice release_rejection one_of
+  wrong_pointer_or_lifecycle
+  released_outside_target
+  target_identity_changed
+  target_operation_changed
+
+public export
+record Released {canvas : Canvas} {action : Type}
+                {previous_picture : Picture canvas action}
+                {press_point : PixelAddress canvas}
+                (contact : Contact previous_picture press_point)
+                (current_picture : Picture canvas action)
+                (release_point : PixelAddress canvas) (release : TouchEvent) where
+  constructor ReleaseOnSameIdentity
+  current_target : Hit current_picture release_point
+  still_same_contact : coherent_release (press contact) release = True
+  same_object : object_identity (target (pressed_target contact)) =
+                object_identity (target current_target)
+  same_kind : kind_code (kind (target (pressed_target contact))) =
+              kind_code (kind (target current_target))
+  same_operation : operation (target (pressed_target contact)) =
+                   operation (target current_target)
+
+export
+finish_contact : (compare_action : (first : action) → (second : action) → Dec (first = second)) →
+                 (contact : Contact previous_picture press_point) →
+                 (current_picture : Picture canvas action) →
+                 (release_point : PixelAddress canvas) → (release : TouchEvent) →
+                 Either release_rejection (Released contact current_picture release_point release)
+finish_contact compare_action contact current_picture release_point release =
+  case decEq (coherent_release (press contact) release) True of
+    No _ => Left wrong_pointer_or_lifecycle
+    Yes coherent =>
+      case pick_painted_target current_picture release_point of
+        Nothing => Left released_outside_target
+        Just current =>
+          case decEq (object_identity (target (pressed_target contact)))
+                     (object_identity (target current)) of
+            No _ => Left target_identity_changed
+            Yes same_object =>
+              case decEq (kind_code (kind (target (pressed_target contact))))
+                         (kind_code (kind (target current))) of
+                No _ => Left target_identity_changed
+                Yes same_kind =>
+                  case compare_action (operation (target (pressed_target contact)))
+                                      (operation (target current)) of
+                    No _ => Left target_operation_changed
+                    Yes same_operation =>
+                      Right (ReleaseOnSameIdentity current coherent same_object same_kind same_operation)
+
+export
+respond_to_release : {canvas : Canvas} →
+                     (behaviour : Behaviour model action canvas) → (current : model) →
+                     (point : PixelAddress canvas) →
+                     (released : Released contact (draw behaviour current) point event) →
+                     Response behaviour (operation (target (current_target released))) current
+respond_to_release behaviour current point released =
+  respond_to_touch behaviour current point (current_target released)

@@ -1,0 +1,92 @@
+module Swap.Raw.Native
+
+import public Swap.Raw.Response
+import public Control.Linear.LIO
+
+-- Direct Android NDK / EGL / GLES boundary, NOT a Sokol adapter.
+-- These are implementer obligations. This module supplies no native handle,
+-- no FFI implementation, and no fabricated display receipt.
+
+public export
+record FrameKey where
+  constructor FrameForEvent
+  surface_epoch : Number
+  viewport_revision : Number
+  frame_revision : Number
+  input_serial : Number
+
+public export
+choice native_failure one_of
+  no_native_window
+  stale_surface_or_viewport
+  context_lost
+  drawing_failed
+  readback_disagrees
+  submission_failed
+  delivery_deadline_expired
+
+-- The resource inside a successful result must be consumed exactly once.
+public export
+data NativeAttempt : Type → Type where
+  NativeFailed : native_failure → NativeAttempt resource
+  NativeReady : (1 resource_value : resource) → NativeAttempt resource
+
+public export
+record NativeBoundary (canvas : Canvas) (action : Type) where
+  constructor SpecifyNativeBoundary
+  Window : Number → Type
+  Rasterized : FrameKey → Picture canvas action → Type
+  Verified : FrameKey → Picture canvas action → Type
+  Submitted : FrameKey → Picture canvas action → Type
+
+  acquire_window : (epoch : Number) → L1 IO (NativeAttempt (Window epoch))
+  rasterize : (key : FrameKey) → (picture : Picture canvas action) →
+              (1 window : Window (surface_epoch key)) →
+              L1 IO (NativeAttempt (Rasterized key picture))
+  verify_pixels : (key : FrameKey) → (picture : Picture canvas action) →
+                  (1 rasterized : Rasterized key picture) →
+                  L1 IO (NativeAttempt (Verified key picture))
+  submit : (key : FrameKey) → (picture : Picture canvas action) →
+           (1 verified : Verified key picture) →
+           L1 IO (NativeAttempt (Submitted key picture))
+  reuse_window : (key : FrameKey) → (picture : Picture canvas action) →
+                 (1 submitted : Submitted key picture) → L1 IO (Window (surface_epoch key))
+  close_window : (epoch : Number) → (1 window : Window epoch) → L IO ()
+
+-- The output is tied to draw(perform(command,before)), never draw(before).
+-- The caller must keep its pending input obligation until it handles the
+-- result, including an explicit failure/retry path. L1 keeps resource values
+-- out of unrestricted IO binds.
+export
+submit_changed_result : {canvas : Canvas} →
+                        (boundary : NativeBoundary canvas action) →
+                        (behaviour : Behaviour model action canvas) →
+                        (key : FrameKey) → (command : action) → (before : model) →
+                        VisibleChange behaviour command before →
+                        (1 window : Window boundary (surface_epoch key)) →
+                        L1 IO (NativeAttempt
+                          (Submitted boundary key
+                            (draw behaviour (perform behaviour command before))))
+submit_changed_result boundary behaviour key command before change window = do
+  painted ← rasterize boundary key (draw behaviour (perform behaviour command before)) window
+  case painted of
+    NativeFailed reason => pure1 (NativeFailed reason)
+    NativeReady rasterized => do
+      checked ← verify_pixels boundary key
+                  (draw behaviour (perform behaviour command before)) rasterized
+      case checked of
+        NativeFailed reason => pure1 (NativeFailed reason)
+        NativeReady verified =>
+          submit boundary key (draw behaviour (perform behaviour command before)) verified
+
+-- AInputQueue_finishEvent is an input-processing acknowledgement. Its token
+-- has no conversion to Verified or Submitted. eglSwapBuffers success means
+-- submission, NOT physical scanout. No PhysicalDisplay type is fabricated.
+public export
+record InputFinished (serial : Number) where
+  constructor FinishedInputProcessing
+  handled : Bool
+
+-- Reuse of a driver receipt must also be rejected at the raw boundary using
+-- epoch + frame + input serial. Linear source types do not validate foreign
+-- pointers, a dishonest interpreter, or an OS that has stopped scheduling.

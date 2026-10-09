@@ -1,0 +1,171 @@
+module Swap.Raw.Examples
+
+import public Swap.Raw.Response
+
+-- Two-pixel fixtures are retained for pointer ownership and NEGATIVE visual
+-- tests only. They no longer demonstrate visible response.
+public export
+two_pixels : Canvas
+two_pixels = CanvasSize 2 1
+
+public export
+control_pixel : PixelAddress two_pixels
+control_pixel = PixelAt FZ FZ
+
+public export
+result_pixel : PixelAddress two_pixels
+result_pixel = PixelAt (FS FZ) FZ
+
+public export
+choice operation_name one_of
+  exchange_pair
+  put_in_initial_order
+  normalize_sign
+
+public export
+apply_operation : operation_name → Bool → Bool
+apply_operation exchange_pair before = not before
+apply_operation put_in_initial_order before = False
+apply_operation normalize_sign before = False
+
+public export
+pair_button : Target operation_name
+pair_button = NamedTarget button_target 10 "exchange the pair" exchange_pair
+
+public export
+sign_formula : Target operation_name
+sign_formula = NamedTarget formula_target 20 "replace the negative sign" normalize_sign
+
+public export
+initial_order_button : Target operation_name
+initial_order_button = NamedTarget button_target 30 "restore initial order" put_in_initial_order
+
+-- 64 and 16 are small arithmetic-regression budgets, NOT calibrated phone
+-- thresholds. Ratio 1/5 and RGB8 mean >1 come from Fourier-sound's comparison.
+public export
+example_policy : operation_name → Bool → VisibilityPolicy
+example_policy _ _ = AggregatePolicy 64 16 1 5 1
+
+public export
+pair_picture : Bool → Picture two_pixels operation_name
+pair_picture before (PixelAt FZ _) = PaintSample paper_ink (Just pair_button)
+pair_picture before (PixelAt (FS FZ) _) =
+  PaintSample (if before then coral_ink else cyan_ink) Nothing
+
+public export
+formula_picture : Bool → Picture two_pixels operation_name
+formula_picture negative (PixelAt FZ _) = PaintSample paper_ink (Just sign_formula)
+formula_picture negative (PixelAt (FS FZ) _) =
+  PaintSample (if negative then coral_ink else cyan_ink) Nothing
+
+public export
+result_only_formula : Bool → Picture two_pixels operation_name
+result_only_formula negative (PixelAt FZ _) = PaintSample paper_ink (Just sign_formula)
+result_only_formula negative (PixelAt (FS FZ) _) = PaintSample cyan_ink Nothing
+
+public export
+meaningful_result : operation_name → Bool → PixelAddress two_pixels → Bool
+meaningful_result command before (PixelAt FZ _) = False
+meaningful_result command before (PixelAt (FS FZ) _) = True
+
+public export
+pair_behaviour : Behaviour Bool operation_name two_pixels
+pair_behaviour = DescribeBehaviour apply_operation pair_picture meaningful_result decEq example_policy
+
+public export
+formula_behaviour : Behaviour Bool operation_name two_pixels
+formula_behaviour = DescribeBehaviour apply_operation formula_picture meaningful_result decEq example_policy
+
+public export
+broken_formula_behaviour : Behaviour Bool operation_name two_pixels
+broken_formula_behaviour = DescribeBehaviour apply_operation result_only_formula meaningful_result decEq example_policy
+
+-- Positive aggregate fixture: column 0 is a control; columns 1..8 and rows
+-- 0..7 are one actual 8x8 result region (64 DISTINCT raster addresses).
+public export
+aggregate_canvas : Canvas
+aggregate_canvas = CanvasSize 9 8
+
+public export
+aggregate_control : PixelAddress aggregate_canvas
+aggregate_control = PixelAt FZ FZ
+
+public export
+aggregate_result : PixelAddress aggregate_canvas
+aggregate_result = PixelAt (FS FZ) FZ
+
+public export
+aggregate_region : operation_name → Bool → PixelAddress aggregate_canvas → Bool
+aggregate_region _ _ (PixelAt FZ _) = False
+aggregate_region _ _ (PixelAt (FS _) _) = True
+
+public export
+aggregate_pair_picture : Bool → Picture aggregate_canvas operation_name
+aggregate_pair_picture before (PixelAt FZ _) = PaintSample paper_ink (Just pair_button)
+aggregate_pair_picture before (PixelAt (FS _) _) =
+  PaintSample (if before then coral_ink else cyan_ink) Nothing
+
+public export
+aggregate_formula_picture : Bool → Picture aggregate_canvas operation_name
+aggregate_formula_picture before (PixelAt FZ _) = PaintSample paper_ink (Just sign_formula)
+aggregate_formula_picture before (PixelAt (FS _) _) =
+  PaintSample (if before then coral_ink else cyan_ink) Nothing
+
+public export
+aggregate_pair : Behaviour Bool operation_name aggregate_canvas
+aggregate_pair = DescribeBehaviour apply_operation aggregate_pair_picture aggregate_region decEq example_policy
+
+public export
+aggregate_formula : Behaviour Bool operation_name aggregate_canvas
+aggregate_formula = DescribeBehaviour apply_operation aggregate_formula_picture aggregate_region decEq example_policy
+
+public export
+single_pixel_picture : Bool → Picture aggregate_canvas operation_name
+single_pixel_picture before (PixelAt FZ _) = PaintSample paper_ink (Just pair_button)
+single_pixel_picture before (PixelAt (FS FZ) FZ) =
+  PaintSample (if before then coral_ink else cyan_ink) Nothing
+single_pixel_picture before _ = PaintSample cyan_ink Nothing
+
+public export
+single_pixel_behaviour : Behaviour Bool operation_name aggregate_canvas
+single_pixel_behaviour = DescribeBehaviour apply_operation single_pixel_picture aggregate_region decEq example_policy
+
+public export
+control_flash_picture : Bool → Picture aggregate_canvas operation_name
+control_flash_picture before (PixelAt FZ _) =
+  PaintSample (if before then coral_ink else cyan_ink) (Just pair_button)
+control_flash_picture before _ = PaintSample cyan_ink Nothing
+
+public export
+control_flash_behaviour : Behaviour Bool operation_name aggregate_canvas
+control_flash_behaviour = DescribeBehaviour apply_operation control_flash_picture aggregate_region decEq example_policy
+
+public export
+stale_result_picture : Bool → Picture aggregate_canvas operation_name
+stale_result_picture _ = aggregate_pair_picture False
+
+public export
+stale_result_behaviour : Behaviour Bool operation_name aggregate_canvas
+stale_result_behaviour = DescribeBehaviour apply_operation stale_result_picture aggregate_region decEq example_policy
+
+public export
+one_pixel_region : operation_name → Bool → PixelAddress aggregate_canvas → Bool
+one_pixel_region _ _ (PixelAt (FS FZ) FZ) = True
+one_pixel_region _ _ _ = False
+
+public export
+shrunk_region_behaviour : Behaviour Bool operation_name aggregate_canvas
+shrunk_region_behaviour = DescribeBehaviour apply_operation single_pixel_picture one_pixel_region decEq example_policy
+
+-- Touch picking still needs individual coordinates. Those are NOT visual
+-- response evidence. Reproduce the earlier moving-dot input discrepancy.
+public export
+moving_canvas : Canvas
+moving_canvas = CanvasSize 360 1
+
+public export
+moving_dot : Picture moving_canvas operation_name
+moving_dot point =
+  if finToNat (column point) ≟ 133
+    then PaintSample coral_ink (Just (NamedTarget strand_target 40 "moving strand" exchange_pair))
+    else PaintSample background_ink Nothing

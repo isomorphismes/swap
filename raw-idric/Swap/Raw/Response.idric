@@ -1,0 +1,168 @@
+module Swap.Raw.Response
+
+import public Swap.Raw.Screen
+import public Decidable.Equality
+
+-- Aggregate response, not an existential changed pixel. The policy and the
+-- WHOLE meaningful region are declared before the result is measured.
+-- Fourier-sound's media_fixture_test.c supplies the area + RGB-L1 pattern.
+-- These numerical budgets are not, by themselves, calibrated human vision.
+
+public export
+record VisibilityPolicy where
+  constructor AggregatePolicy
+  minimum_region_pixels : Integer
+  minimum_changed_pixels : Integer
+  changed_fraction_numerator : Integer
+  changed_fraction_denominator : Integer
+  minimum_mean_channel_delta : Integer
+
+public export
+record RegionMetrics where
+  constructor MeasuredRegion
+  region_pixels : Integer
+  changed_pixels : Integer
+  absolute_channel_difference : Integer
+
+public export
+record Behaviour (model : Type) (action : Type) (canvas : Canvas) where
+  constructor DescribeBehaviour
+  perform : action → model → model
+  draw : model → Picture canvas action
+  result_region : action → model → PixelAddress canvas → Bool
+  same_model : (first : model) → (second : model) → Dec (first = second)
+  visibility_policy : action → model → VisibilityPolicy
+
+public export
+red_channel : pigment → Integer
+red_channel colour = cast (colour_code colour) `div` 65536
+
+public export
+green_channel : pigment → Integer
+green_channel colour = (cast (colour_code colour) `div` 256) `mod` 256
+
+public export
+blue_channel : pigment → Integer
+blue_channel colour = cast (colour_code colour) `mod` 256
+
+public export
+rgb_difference : pigment → pigment → Integer
+rgb_difference first second =
+  abs (red_channel first - red_channel second) +
+  abs (green_channel first - green_channel second) +
+  abs (blue_channel first - blue_channel second)
+
+public export
+same_result_pixel : (behaviour : Behaviour model action canvas) →
+                    action → model → PixelAddress canvas → Bool
+same_result_pixel behaviour command before point =
+  colour_code (ink (draw behaviour before point)) ≟
+  colour_code (ink (draw behaviour (perform behaviour command before) point))
+
+-- The caller cannot provide a list of repeated good pixels or a hand-picked
+-- changed subset. result_metrics enumerates each actual address once.
+public export
+measure_region : (PixelAddress canvas → Bool) →
+                 Picture canvas action → Picture canvas action →
+                 List (PixelAddress canvas) → RegionMetrics
+measure_region relevant earlier later [] = MeasuredRegion 0 0 0
+measure_region relevant earlier later (point :: rest) =
+  let totals = measure_region relevant earlier later rest in
+  if relevant point then
+    let difference = rgb_difference (ink (earlier point)) (ink (later point)) in
+    MeasuredRegion (region_pixels totals + 1)
+      (changed_pixels totals + if difference > 0 then 1 else 0)
+      (absolute_channel_difference totals + difference)
+  else totals
+
+public export
+result_metrics : {canvas : Canvas} →
+                 (behaviour : Behaviour model action canvas) →
+                 (command : action) → (before : model) → RegionMetrics
+result_metrics {canvas} behaviour command before =
+  measure_region (result_region behaviour command before)
+    (draw behaviour before) (draw behaviour (perform behaviour command before))
+    (all_pixels canvas)
+
+public export
+passes_aggregate_policy : VisibilityPolicy → RegionMetrics → Bool
+passes_aggregate_policy policy measured =
+  -- Invalid/vacuous policies and impossible totals cannot certify anything.
+  minimum_region_pixels policy > 1 &&
+  minimum_changed_pixels policy > 1 &&
+  changed_fraction_numerator policy > 0 &&
+  changed_fraction_denominator policy > changed_fraction_numerator policy &&
+  minimum_mean_channel_delta policy > 0 &&
+  region_pixels measured >= minimum_region_pixels policy &&
+  changed_pixels measured >= minimum_changed_pixels policy &&
+  changed_pixels measured <= region_pixels measured &&
+  absolute_channel_difference measured >= changed_pixels measured &&
+  absolute_channel_difference measured <= 765 × region_pixels measured &&
+  -- Strict inequalities reproduce Fourier's >20% and mean channel delta >1
+  -- when the corresponding policy fields are 1, 5 and 1. No rounding/division.
+  changed_pixels measured × changed_fraction_denominator policy >
+    region_pixels measured × changed_fraction_numerator policy &&
+  absolute_channel_difference measured >
+    3 × region_pixels measured × minimum_mean_channel_delta policy
+
+public export
+aggregate_result_passes : {canvas : Canvas} →
+                          (behaviour : Behaviour model action canvas) →
+                          (command : action) → (before : model) → Bool
+aggregate_result_passes behaviour command before =
+  passes_aggregate_policy (visibility_policy behaviour command before)
+                         (result_metrics behaviour command before)
+
+public export
+record VisibleChange {model : Type} {action : Type} {canvas : Canvas}
+                     (behaviour : Behaviour model action canvas)
+                     (command : action) (before : model) where
+  constructor ChangedResultRegion
+  -- This proof mentions computed WHOLE-region metrics, not caller-supplied
+  -- counters, a single address, or an arbitrarily substituted next picture.
+  aggregate_passes : aggregate_result_passes behaviour command before = True
+
+public export
+data Response : (behaviour : Behaviour model action canvas) →
+                (command : action) → (before : model) → Type where
+  AtFixedPoint : perform behaviour command before = before →
+                Response behaviour command before
+  NeedsDrawing : Not (perform behaviour command before = before) →
+                 VisibleChange behaviour command before →
+                 Response behaviour command before
+  UnobservableChange : Not (perform behaviour command before = before) →
+                       Response behaviour command before
+
+export
+respond_to_action : {canvas : Canvas} →
+                    (behaviour : Behaviour model action canvas) →
+                    (command : action) → (before : model) →
+                    Response behaviour command before
+respond_to_action behaviour command before =
+  case same_model behaviour (perform behaviour command before) before of
+    Yes fixed => AtFixedPoint fixed
+    No changed =>
+      case decEq (aggregate_result_passes behaviour command before) True of
+        Yes sufficient => NeedsDrawing changed (ChangedResultRegion sufficient)
+        No _ => UnobservableChange changed
+
+export
+respond_to_touch : {canvas : Canvas} →
+                   (behaviour : Behaviour model action canvas) →
+                   (before : model) → (point : PixelAddress canvas) →
+                   (hit : Hit (draw behaviour before) point) →
+                   Response behaviour (operation (target hit)) before
+respond_to_touch behaviour before point hit =
+  respond_to_action behaviour (operation (target hit)) before
+
+public export
+choice response_kind one_of
+  already_at_result
+  visible_update_required
+  invisible_update_refused
+
+export
+kind_of_response : Response behaviour command before → response_kind
+kind_of_response (AtFixedPoint _) = already_at_result
+kind_of_response (NeedsDrawing _ _) = visible_update_required
+kind_of_response (UnobservableChange _) = invisible_update_refused

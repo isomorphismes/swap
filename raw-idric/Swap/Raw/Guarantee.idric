@@ -1,0 +1,26 @@
+module Swap.Raw.Guarantee
+
+import public Swap.Raw.Response
+
+-- This is the application-level law, not a test performed after a click.
+-- Every operation that changes its input must have a meaningful visible
+-- result. The unrestricted Behaviour and raster search remain diagnostics.
+public export
+record Responsive {model : Type} {action : Type} {canvas : Canvas}
+                  (behaviour : Behaviour model action canvas) where
+  constructor EveryChangeIsVisible
+  show_changed_result : (command : action) → (before : model) →
+                        Not (perform behaviour command before = before) →
+                        VisibleChange behaviour command before
+
+-- No full-frame search is needed here. A certified view supplies its witness.
+-- This function never constructs UnobservableChange.
+export
+respond_with_guarantee : (behaviour : Behaviour model action canvas) →
+                         Responsive behaviour →
+                         (command : action) → (before : model) →
+                         Response behaviour command before
+respond_with_guarantee behaviour responsive command before =
+  case same_model behaviour (perform behaviour command before) before of
+    Yes fixed => AtFixedPoint fixed
+    No changed => NeedsDrawing changed (show_changed_result responsive command before changed)

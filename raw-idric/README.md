@@ -1,76 +1,72 @@
 # Raw Idriç: touch must have its specified visible result
 
-This is the active experiment on branch `raw-idric`. No Sokol, SDL, raylib,
-JavaScript renderer, or C copy of the application semantics is used by this
-package. Inherited `src/` and `idric/` are the earlier prototypes, not the raw
-implementation. Their successful APK builds do not qualify this package.
+Active experiment on branch `raw-idric`. No Sokol, SDL, raylib, JavaScript
+renderer, or C copy of application semantics is used by this package.
+Inherited `src/` and `idric/` are earlier prototypes, not the raw implementation.
+Their APK builds cannot qualify this package.
 
-The job is:
+    pick the identity in the composed picture
+    revalidate the captured pointer/identity on release
+    apply its operation to the current state
+    require a changed result pixel unless this state is already fixed
+    retain a linear response obligation
+    rasterize, verify, and submit that exact result through the NDK contract
 
-    pick the object in the picture that was drawn
-    apply that object's operation to the correct state
-    draw the resulting state
-    require a changed result pixel unless the operation fixes this state
-    rasterize, verify, and submit that exact picture through the NDK boundary
+## The condition
 
-## The actual condition
+For operation f and state s, no semantic change is needed when f(s)=s. This is
+not the same as saying f is globally idempotent. Reset may change its first
+input but fix its own result.
 
-For operation f and current state s, no semantic change is needed when f(s)=s.
-This is a fixed-point condition, not the assertion that f is globally
-idempotent. An idempotent reset may change its first input. A non-idempotent
-operation may nevertheless have fixed points.
+For a changed state, `VisibleChange behaviour command before` requires a
+bounded pixel in the operation's result region whose final opaque colour
+differs between `draw before` and `draw (perform command before)`. A new revision,
+callback name, object address, or control-only flash is not enough.
 
-For a changed state, `VisibleChange behaviour command before` requires a bounded
-pixel in the operation's declared result region whose final opaque colour differs
-between `draw before` and `draw (perform command before)`. A changed revision,
-allocated object, callback name, or control-only flash is not enough. The proof
-is bound to the exact operation and before-state. It cannot certify an unrelated
-next state or an old drawing.
+The reference classifier returns `AtFixedPoint`, `NeedsDrawing`, or
+`UnobservableChange`. The last is a view-contract failure, not successful action
+completion. For example, x=-1 -> x=1 is invisible in a display of x² alone;
+showing the changed input or transformation can repair that interpretation.
 
-`respond_to_action` computes an exact finite reference-raster check and returns
-one of: `AtFixedPoint`, `NeedsDrawing`, or `UnobservableChange`. The last is a
-contract failure and must not be reported as a successfully completed action.
-It means the mathematical operation or view needs an explicit visible
-interpretation. For example, x=-1 -> x=1 with a display of x² alone is invisible;
-showing the changed input or its transformation repairs the view contract.
+## Source
 
-## What has code and what remains an obligation
+- `Screen.idric`: bounded pixels, coupled paint/picking after composition,
+  occlusion, and a hit proof for the exact painted pixel.
+- `Contact.idric`: pointer/surface/viewport/frame validation, current-geometry
+  identity revalidation, explicit cancellation, and release-to-current-state
+  binding. Implemented activation is clicking, not the full braid drag policy.
+- `Response.idric`: exact action/state/result-region/changed-pixel relationships.
+- `Delivery.idric`: an opaque linear response debt. A failed native attempt
+  returns the still-owned debt; a view failure retains both debt and window.
+  Consumers cannot unwrap this obligation merely to drop the redraw.
+- `Native.idric`: direct NDK/EGL/GLES implementer contract with linear resources
+  and distinct rasterized, verified and submitted stages. Its orchestration
+  function submits the exact result picture, not an arbitrary drawing.
+- `Examples.idric`, `Tests.idric`, `ContactTests.idric`, `Run.idric`: exact small
+  reference rasters, positive scenarios and compiler-rejected negative cases.
 
-- `Screen.idric`: bounded framebuffer addresses, a final picture carrying both
-  pigment and target ownership, composition/occlusion, and a hit proof for the
-  exact pixel. Picking does not keep an independent table of resting positions.
-- `Response.idric`: state transition, result-region and changed-pixel witnesses,
-  fixed-point decisions, and touch-to-action binding.
-- `Native.idric`: direct NDK/EGL/GLES implementer contract with surface/frame/input
-  indices, linear resources, distinct rasterized/verified/submitted stages, and
-  an executable orchestration function against that contract. No concrete NDK
-  implementation is supplied, so this is not native execution evidence.
-- `Examples.idric` and `Tests.idric`: small exact reference pictures and positive
-  and negative compilation cases. These are not the full braid/triangle/grid UI.
+[Detailed contracts and remaining native obligations](contracts.md) describe
+coordinate normalization, per-event delivery, rapid input, animation, foreign
+returns, readback, buffer submission, lifecycle and progress.
 
-The compiler still has to check this exact source. CI boots the existing pinned
-Idriç compiler; it does not translate the files into C, stock Idris or RefC.
-The `linear` library is that compiler checkout's inherited linear-IO boundary,
-not a replacement graphics engine. The few indexed `data` declarations are
-needed because the pinned `choice ... one_of` grammar does not support indices.
+## Qualification
 
-## Limits that the types must not conceal
+CI boots `isomorphisms/Idric@94dfd99bd3e376507fedc8611053b7173b2519f0` and checks
+the actual `.idric` files. It does not translate them to C, stock Idris or RefC.
+The compiler checkout's linear-IO library is the explicit inherited effect
+boundary. Indexed `data` declarations are necessary because its pinned
+`choice ... one_of` grammar supports unindexed alternatives only.
 
-A reference pixel difference is not a proof that a human noticed it. Result-region
-size, contrast, animation duration and full native-raster conformance require
-acceptance tests. The result-region declaration itself is part of the reviewed
-semantic specification; types cannot discover an author's intentions.
+No concrete NDK driver, native Idriç lowering, full Swap scene, GPU execution,
+new APK or physical-screen result is supplied by these contracts. Their typecheck
+and test result must be reported from the actual CI outcome, not inferred from
+source presence.
 
-A real driver must validate finite coordinates, orientation, viewport, pointer
-identity, lifecycle, render-thread ownership, actual readback and foreign return
-codes. `AInputQueue_finishEvent` is not a display acknowledgement. Successful
-`eglSwapBuffers` is submission to the native window, not proof of physical scanout.
+A pixel difference does not prove human perceptibility; meaningful area,
+contrast and duration remain acceptance requirements. The result-region
+specification must itself be reviewed. Types cannot infer the intended picture.
 
-Linear resources stop a checked caller from copying/dropping those resources.
-They do not force Android to schedule the process or establish bounded latency.
-No concrete driver, new APK, graphics test, physical-screen observation or
-completed dependent proof is claimed merely by committing these files.
-
-Full press/move/release capture, stale-frame revalidation, pending-action delivery,
-rapid-input coverage and lifecycle retry contracts are specified in the next
-boundary notes; they are not silently inherited from the earlier C adapter.
+`AInputQueue_finishEvent` acknowledges input processing, not display delivery.
+`eglSwapBuffers` success is submission, not physical scanout. Linear types do
+not force the OS to schedule a frame or establish a latency bound. Those facts
+remain explicit rather than being fabricated as dependent proofs.

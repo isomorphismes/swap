@@ -1,0 +1,68 @@
+module Swap.Raw.Delivery
+
+import public Swap.Raw.Contact
+
+-- Unlike the unrestricted reference classifier, the application-facing API
+-- returns an opaque linear obligation. Its constructor is private to this
+-- module. The caller cannot pattern-match it away to ignore a redraw.
+export
+data ResponseDebt : FrameKey → (behaviour : Behaviour model action canvas) →
+                    (command : action) → (before : model) → Type where
+  ResultStillOwed : Response behaviour command before → ResponseDebt key behaviour command before
+
+export
+owe_released_response : {canvas : Canvas} →
+                        (behaviour : Behaviour model action canvas) → (current : model) →
+                        (point : PixelAddress canvas) →
+                        (event : TouchEvent) →
+                        (released : Released contact (draw behaviour current) point event) →
+                        L1 IO (ResponseDebt (frame event) behaviour
+                          (operation (target (current_target released))) current)
+owe_released_response behaviour current point event released =
+  pure1 (ResultStillOwed (respond_to_release behaviour current point released))
+
+-- A native failure returns the still-owned obligation, not success. A view
+-- failure also keeps the window; no draw was attempted. Neither can retire an
+-- action as visibly completed. The application must retry or explicitly record
+-- interruption/failure. There is no exported 'discard debt' function.
+public export
+data DeliveryResult : (boundary : NativeBoundary canvas action) →
+                      FrameKey → (behaviour : Behaviour model action canvas) →
+                      (command : action) → (before : model) → Type where
+  FixedPointComplete : perform behaviour command before = before →
+                       (1 window : Window boundary (surface_epoch key)) →
+                       DeliveryResult boundary key behaviour command before
+  ResultSubmitted : (1 receipt : Submitted boundary key
+                      (draw behaviour (perform behaviour command before))) →
+                    DeliveryResult boundary key behaviour command before
+  NativeRetryRequired : native_failure →
+                        (1 debt : ResponseDebt key behaviour command before) →
+                        DeliveryResult boundary key behaviour command before
+  ViewContractFailed : (1 debt : ResponseDebt key behaviour command before) →
+                       (1 window : Window boundary (surface_epoch key)) →
+                       DeliveryResult boundary key behaviour command before
+
+export
+deliver_response : {canvas : Canvas} →
+                   (boundary : NativeBoundary canvas action) →
+                   (key : FrameKey) → (behaviour : Behaviour model action canvas) →
+                   (command : action) → (before : model) →
+                   (1 debt : ResponseDebt key behaviour command before) →
+                   (1 window : Window boundary (surface_epoch key)) →
+                   L1 IO (DeliveryResult boundary key behaviour command before)
+deliver_response boundary key behaviour command before (ResultStillOwed response) window =
+  case response of
+    AtFixedPoint fixed => pure1 (FixedPointComplete fixed window)
+    UnobservableChange changed =>
+      pure1 (ViewContractFailed (ResultStillOwed (UnobservableChange changed)) window)
+    NeedsDrawing changed witness => do
+      result ← submit_changed_result boundary behaviour key command before witness window
+      case result of
+        NativeReady receipt => pure1 (ResultSubmitted receipt)
+        NativeFailed reason =>
+          pure1 (NativeRetryRequired reason (ResultStillOwed (NeedsDrawing changed witness)))
+
+-- Event uniqueness still belongs to the trusted driver: it must issue each
+-- decoded release once and enforce monotone input/frame serials. Linear source
+-- obligations do not make replayed foreign events fresh. Keep one debt per
+-- accepted event; do not replace a queue with its final endpoint permutation.

@@ -5,8 +5,8 @@ import public Data.List
 import public Data.Text
 
 -- Paint and picking sample ONE fully composed, clipped picture.
--- Fin is used only to implement a bounded framebuffer address, not a
--- mathematical vector. No floating-point or NDK representation enters here.
+-- Fin implements a bounded framebuffer address, not a mathematical vector.
+-- Native coordinate conversion happens before this exact raster boundary.
 
 public export
 record Canvas where
@@ -28,10 +28,17 @@ choice pigment one_of
   amber_ink
   paper_ink
 
--- Opaque RGB8 palette values. Lowering must use alpha 255, no blending,
--- dithering, colour conversion or multisampling for this exact-pixel lane.
+-- Explicit machine representation only at the colour-encoding boundary.
+-- The named palette is opaque RGB8 in the low 24 bits of this word.
 public export
-colour_code : pigment → Number
+PackedColour : Type
+PackedColour = Bits32
+
+-- Lowering must use alpha 255, no blending, dithering, colour conversion or
+-- multisampling for this exact-pixel lane. Machine words also avoid expanding
+-- multi-million-sized whole numbers in type-level colour comparisons.
+public export
+colour_code : pigment → PackedColour
 colour_code background_ink = 0x101018
 colour_code coral_ink = 0xF05C70
 colour_code cyan_ink = 0x47BFE8

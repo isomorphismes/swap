@@ -27,15 +27,14 @@ has_target (Just _) = True
 has_target Nothing = False
 
 -- Compile-time witnesses bind the operation, state, result region and colour
--- change. These must reduce to actual raster changes, not metadata changes.
+-- change. These reduce to raster changes, not metadata changes.
 pair_changes : VisibleChange pair_behaviour exchange_pair False
 pair_changes = ChangedResultPixel result_pixel Refl Refl
 
 formula_changes : VisibleChange formula_behaviour normalize_sign True
 formula_changes = ChangedResultPixel result_pixel Refl Refl
 
--- Negative programs are typechecked by the compiler's failing declaration.
--- They are not disabled comments, runtime assertions, or fabricated proofs.
+-- Negative programs are checked by the compiler's failing declaration.
 failing
   unchanged_pixels_are_success : VisibleChange broken_formula_behaviour normalize_sign True
   unchanged_pixels_are_success = ChangedResultPixel result_pixel Refl Refl
@@ -60,6 +59,7 @@ failing
   discard_native_resource : (1 resource : resource_type) → ()
   discard_native_resource resource = ()
 
+export
 main : IO ()
 main = do
   case pick_painted_target (draw pair_behaviour False) control_pixel of

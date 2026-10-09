@@ -1,0 +1,87 @@
+module Swap.Raw.ContactTests
+
+import Swap.Raw.Delivery
+import Swap.Raw.Examples
+import System
+
+assert_contact : Text → Bool → IO ()
+assert_contact label True = putStrLn ("PASS " ++ label)
+assert_contact label False = do
+  putStrLn ("FAIL " ++ label)
+  exitFailure
+
+-- A one-operation fixture lets the generic contact checker use a real
+-- decidable equality without giving arbitrary commands the same identity.
+unit_button : Target ()
+unit_button = NamedTarget button_target 71 "move the marked result" ()
+
+press_picture : Picture two_pixels ()
+press_picture (PixelAt FZ _) = PaintSample coral_ink (Just unit_button)
+press_picture (PixelAt (FS FZ) _) = PaintSample background_ink Nothing
+
+moved_picture : Picture two_pixels ()
+moved_picture (PixelAt FZ _) = PaintSample background_ink Nothing
+moved_picture (PixelAt (FS FZ) _) = PaintSample coral_ink (Just unit_button)
+
+accepted_release : Either release_rejection evidence → Bool
+accepted_release (Right _) = True
+accepted_release _ = False
+
+-- These test THE API'S indexed receipt boundary rather than merely mismatching
+-- two unrelated types.
+failing
+  post_wrong_frame : (boundary : NativeBoundary two_pixels ()) →
+                     (1 checked : Verified boundary (FrameForEvent 4 0 10 51) press_picture) →
+                     L1 IO (NativeAttempt (Submitted boundary (FrameForEvent 4 0 11 52) press_picture))
+  post_wrong_frame boundary checked =
+    submit boundary (FrameForEvent 4 0 11 52) press_picture checked
+
+failing
+  post_wrong_picture : (boundary : NativeBoundary two_pixels ()) →
+                       (1 checked : Verified boundary (FrameForEvent 4 0 10 51) press_picture) →
+                       L1 IO (NativeAttempt (Submitted boundary (FrameForEvent 4 0 10 51) moved_picture))
+  post_wrong_picture boundary checked =
+    submit boundary (FrameForEvent 4 0 10 51) moved_picture checked
+
+failing
+  draw_on_old_surface : (boundary : NativeBoundary two_pixels ()) →
+                       (1 window : Window boundary 4) →
+                       L1 IO (NativeAttempt (Rasterized boundary (FrameForEvent 5 0 12 53) press_picture))
+  draw_on_old_surface boundary window =
+    rasterize boundary (FrameForEvent 5 0 12 53) press_picture window
+
+failing
+  drop_changed_action : (1 debt : ResponseDebt (FrameForEvent 4 0 10 51)
+                       pair_behaviour exchange_pair False) → ()
+  drop_changed_action debt = ()
+
+export
+run_contact_tests : IO ()
+run_contact_tests = do
+  let down = PointerEvent (FrameForEvent 4 0 10 50) 7 contact_began
+  let up = PointerEvent (FrameForEvent 4 0 11 51) 7 contact_ended
+  case begin_contact down press_picture control_pixel of
+    Nothing => assert_contact "press captures the painted object" False
+    Just captured => do
+      assert_contact "release revalidates the moved identity in the new frame"
+        (accepted_release (finish_contact decEq captured moved_picture result_pixel up))
+      assert_contact "old resting pixel cannot activate the moved object"
+        (not (accepted_release (finish_contact decEq captured moved_picture control_pixel up)))
+      let other_finger = PointerEvent (frame up) 8 contact_ended
+      assert_contact "a second finger cannot release the captured finger"
+        (not (accepted_release (finish_contact decEq captured moved_picture result_pixel other_finger)))
+      let cancelled = PointerEvent (frame up) 7 contact_cancelled
+      assert_contact "cancel never activates the object"
+        (not (accepted_release (finish_contact decEq captured moved_picture result_pixel cancelled)))
+      let recreated = PointerEvent (FrameForEvent 5 0 11 51) 7 contact_ended
+      assert_contact "surface recreation invalidates the capture"
+        (not (accepted_release (finish_contact decEq captured moved_picture result_pixel recreated)))
+      let resized = PointerEvent (FrameForEvent 4 1 11 51) 7 contact_ended
+      assert_contact "a stale viewport cannot reinterpret the release"
+        (not (accepted_release (finish_contact decEq captured moved_picture result_pixel resized)))
+      let replayed = PointerEvent (FrameForEvent 4 0 11 50) 7 contact_ended
+      assert_contact "nonincreasing input serial is rejected"
+        (not (accepted_release (finish_contact decEq captured moved_picture result_pixel replayed)))
+      let older = PointerEvent (FrameForEvent 4 0 9 51) 7 contact_ended
+      assert_contact "an older displayed-frame record is rejected"
+        (not (accepted_release (finish_contact decEq captured moved_picture result_pixel older)))

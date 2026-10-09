@@ -2,6 +2,6 @@ package raw-swap-response
 
 version = 0.1.0
 sourcedir = "."
-modules = Swap.Raw.Screen, Swap.Raw.Response, Swap.Raw.Native, Swap.Raw.Examples
-main = Swap.Raw.Tests
+modules = Swap.Raw.Screen, Swap.Raw.Response, Swap.Raw.Native, Swap.Raw.Contact, Swap.Raw.Delivery, Swap.Raw.Examples, Swap.Raw.Tests, Swap.Raw.ContactTests
+main = Swap.Raw.Run
 executable = raw-swap-response-tests

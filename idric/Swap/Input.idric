@@ -1,0 +1,175 @@
+module Swap.Input
+
+import Swap.Model
+import Data.List
+
+-- No raw Android pointer IDs leak into this testable logic. Android delivers
+-- one captured contact and normalised coordinates to these pure transitions.
+
+public export
+record ScreenPoint where
+  constructor MkScreenPoint
+  screen_x : Double
+  screen_y : Double
+
+public export
+record CanvasPoint where
+  constructor MkCanvasPoint
+  canvas_x : Double
+  canvas_y : Double
+
+public export
+record CanvasMapping where
+  constructor MkCanvasMapping
+  scale : Double
+  offset_x : Double
+  offset_y : Double
+
+public export
+choice Control one_of
+  left_over_button
+  right_over_button
+  left_under_button
+  right_under_button
+  reset_button
+  replay_button
+  pause_button
+  drag_over_button
+  drag_under_button
+
+public export
+record Rectangle where
+  constructor MkRectangle
+  left : Double
+  top : Double
+  width : Double
+  height : Double
+
+public export
+choice Contact one_of
+  no_contact
+  pressed_button Control
+  grabbed_strand slot
+
+public export
+choice AcceptedGesture one_of
+  selected_control Control
+  completed_crossing Crossing
+
+public export
+canvas_mapping : Double → Double → CanvasMapping
+canvas_mapping screen_width screen_height =
+  let factor = max 0.0001 (min (screen_width ÷ 360.0)
+                               (screen_height ÷ 720.0))
+   in MkCanvasMapping factor ((screen_width-360.0 × factor) ÷ 2.0)
+                             ((screen_height-720.0 × factor) ÷ 2.0)
+
+public export
+on_canvas : CanvasMapping → ScreenPoint → CanvasPoint
+on_canvas mapping point =
+  MkCanvasPoint ((screen_x point-offset_x mapping) ÷ scale mapping)
+                ((screen_y point-offset_y mapping) ÷ scale mapping)
+
+public export
+control_bounds : Control → Rectangle
+control_bounds left_over_button = MkRectangle 14.0 554.0 160.0 38.0
+control_bounds right_over_button = MkRectangle 186.0 554.0 160.0 38.0
+control_bounds left_under_button = MkRectangle 14.0 598.0 160.0 38.0
+control_bounds right_under_button = MkRectangle 186.0 598.0 160.0 38.0
+control_bounds reset_button = MkRectangle 14.0 644.0 100.0 42.0
+control_bounds replay_button = MkRectangle 126.0 644.0 100.0 42.0
+control_bounds pause_button = MkRectangle 238.0 644.0 108.0 42.0
+control_bounds drag_over_button = MkRectangle 14.0 510.0 160.0 38.0
+control_bounds drag_under_button = MkRectangle 186.0 510.0 160.0 38.0
+
+public export
+all_controls : List Control
+all_controls = [left_over_button, right_over_button,
+                left_under_button, right_under_button,
+                reset_button, replay_button, pause_button,
+                drag_over_button, drag_under_button]
+
+public export
+inside : CanvasPoint → Rectangle → Bool
+inside p box =
+  canvas_x p >= left box && canvas_x p <= left box + width box &&
+  canvas_y p >= top box && canvas_y p <= top box + height box
+
+public export
+find_control : CanvasPoint → List Control → Maybe Control
+find_control point [] = Nothing
+find_control point (button :: rest) =
+  if inside point (control_bounds button)
+    then Just button
+    else find_control point rest
+
+public export
+hit_control : CanvasPoint → Maybe Control
+hit_control point = find_control point all_controls
+
+public export
+slot_center : slot → Double
+slot_center first_slot = 86.0
+slot_center second_slot = 180.0
+slot_center third_slot = 274.0
+
+public export
+touch_slot : CanvasPoint → Double → Maybe slot
+touch_slot point heads_y =
+  if abs (canvas_y point - heads_y) > 36.0 then Nothing
+  else if abs (canvas_x point - slot_center first_slot) <= 38.0
+    then Just first_slot
+  else if abs (canvas_x point - slot_center second_slot) <= 38.0
+    then Just second_slot
+  else if abs (canvas_x point - slot_center third_slot) <= 38.0
+    then Just third_slot
+  else Nothing
+
+-- Depth is chosen visibly; release height does not mysteriously invert it.
+-- For the right member, "drag over" means the left member passes UNDER.
+public export
+drag_move : slot → CanvasPoint → Bool → Maybe Crossing
+drag_move first_slot release dragged_over =
+  if canvas_x release >= slot_center first_slot + 35.0 then
+    Just (MkCrossing first_pair (if dragged_over then left_over else left_under))
+  else Nothing
+drag_move second_slot release dragged_over =
+  if canvas_x release >= slot_center second_slot + 35.0 then
+    Just (MkCrossing second_pair (if dragged_over then left_over else left_under))
+  else if canvas_x release <= slot_center second_slot - 35.0 then
+    Just (MkCrossing first_pair (if dragged_over then left_under else left_over))
+  else Nothing
+drag_move third_slot release dragged_over =
+  if canvas_x release <= slot_center third_slot - 35.0 then
+    Just (MkCrossing second_pair (if dragged_over then left_under else left_over))
+  else Nothing
+
+public export
+begin_contact : CanvasPoint → Double → Contact
+begin_contact point head_row =
+  case hit_control point of
+    Just button => pressed_button button
+    Nothing =>
+      case touch_slot point head_row of
+        Just s => grabbed_strand s
+        Nothing => no_contact
+
+public export
+finish_contact : Contact → CanvasPoint → Bool → Maybe AcceptedGesture
+finish_contact no_contact _ _ = Nothing
+finish_contact (pressed_button button) release _ =
+  if inside release (control_bounds button)
+    then Just (selected_control button)
+    else Nothing
+finish_contact (grabbed_strand slot) release dragged_over =
+  case drag_move slot release dragged_over of
+    Just crossing => Just (completed_crossing crossing)
+    Nothing => Nothing
+
+public export
+control_crossing : Control → Maybe Crossing
+control_crossing left_over_button = Just (MkCrossing first_pair left_over)
+control_crossing right_over_button = Just (MkCrossing second_pair left_over)
+control_crossing left_under_button = Just (MkCrossing first_pair left_under)
+control_crossing right_under_button = Just (MkCrossing second_pair left_under)
+control_crossing _ = Nothing

@@ -68,4 +68,48 @@ jobs:
           ICK_CC: ${{ steps.compiler.outputs.compiler }}
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.path }}
         run: bash scripts/android-build.sh '${{ matrix.abi }}'
-      # No installable artifact is published from this un-enrolled signing lane.
+      # Requested A1 smoke-test exception: disposable signer for a single run.
+      # This is not a release signer: no private key or password is uploaded or kept.
+      - name: Install A1 APK packaging inputs
+        if: matrix.abi == 'armeabi-v7a'
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+      - name: Create disposable A1 key and package test APK
+        if: matrix.abi == 'armeabi-v7a'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          export ANDROID_BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+          export ANDROID_KEYSTORE="$RUNNER_TEMP/swap-a1-test-only.p12"
+          export ANDROID_KEYSTORE_TYPE=PKCS12
+          export ANDROID_KEY_ALIAS=swap-a1-test
+          export ANDROID_STORE_PASSWORD
+          ANDROID_STORE_PASSWORD=$(openssl rand -hex 32)
+          export ANDROID_KEY_PASSWORD="$ANDROID_STORE_PASSWORD"
+          echo "::add-mask::$ANDROID_STORE_PASSWORD"
+          keytool -genkeypair -noprompt \
+            -keystore "$ANDROID_KEYSTORE" -storetype "$ANDROID_KEYSTORE_TYPE" \
+            -alias "$ANDROID_KEY_ALIAS" -keyalg RSA -keysize 3072 \
+            -validity 30 -dname 'CN=Swap A1 disposable test,O=Swap' \
+            -storepass "$ANDROID_STORE_PASSWORD" -keypass "$ANDROID_KEY_PASSWORD"
+          export ANDROID_EXPECTED_CERT_SHA256
+          ANDROID_EXPECTED_CERT_SHA256=$(keytool -exportcert \
+            -keystore "$ANDROID_KEYSTORE" -storetype "$ANDROID_KEYSTORE_TYPE" \
+            -storepass "$ANDROID_STORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" |
+            sha256sum | awk '{print $1}')
+          bash scripts/android-package.sh armeabi-v7a
+          test -s dist/swap-armeabi-v7a.apk
+          rm -f -- "$ANDROID_KEYSTORE"
+          echo 'A1 TEST APK ONLY: every workflow run has a new signer.'
+          echo 'Uninstall an earlier Swap test APK before installing a later build.'
+      - name: Upload A1 test APK and verification receipt
+        if: matrix.abi == 'armeabi-v7a'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: swap-a1-test-apk
+          path: |
+            dist/swap-armeabi-v7a.apk
+            dist/swap-armeabi-v7a.receipt.tsv
+          if-no-files-found: error
+          retention-days: 7

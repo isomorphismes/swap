@@ -45,7 +45,7 @@ common=(-std=c11 -O2 -fPIC -DNDEBUG -DSOKOL_GLES3
     -D__ANDROID__ -D__ANDROID_API__=21 -D__ANDROID_MIN_SDK_VERSION__=21
     -DBIONIC_IOCTL_NO_SIGNEDNESS_OVERLOAD)
 objects=()
-for name in swap input app; do
+for name in swap input views app; do
     warnings=(-Wall -Wextra)
     # Keep owned domain code strict without promoting third-party Sokol
     # implementation warnings to model defects.
@@ -62,7 +62,7 @@ done
 grep -E 'GLOBAL.*DEFAULT.*ANativeActivity_onCreate$' "$build/symbols.txt"
 # Bind a candidate to its exact source, build recipe, dependency pins and bytes.
 (cd "$root"; sha256sum DEPS.lock src/swap.h src/swap.c src/app.c \
-    src/input.h src/input.c scripts/android-build.sh android/AndroidManifest.xml \
+    src/input.h src/input.c src/views.h src/views.c scripts/android-build.sh android/AndroidManifest.xml \
     "build/android-$abi/libswap.so") > "$build/inputs.sha256"
 printf 'ICK_C_REVISION\t%s\nNDK_VERSION\t%s\n' "$ICK_REVISION" "$ANDROID_NDK_VERSION"
 printf 'ICK_GAP\tAndroid platform assembly/link/runtime supplied by NDK, not ICK\n'

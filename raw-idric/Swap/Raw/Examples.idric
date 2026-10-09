@@ -1,0 +1,90 @@
+module Swap.Raw.Examples
+
+import public Swap.Raw.Response
+
+-- Tiny exact raster fixtures, not the full Swap UI or an APK.
+-- The first pixel is the control; the second explains the operation's result.
+public export
+two_pixels : Canvas
+two_pixels = CanvasSize 2 1
+
+public export
+control_pixel : PixelAddress two_pixels
+control_pixel = PixelAt FZ FZ
+
+public export
+result_pixel : PixelAddress two_pixels
+result_pixel = PixelAt (FS FZ) FZ
+
+public export
+choice operation_name one_of
+  exchange_pair
+  put_in_initial_order
+  normalize_sign
+
+public export
+apply_operation : operation_name → Bool → Bool
+apply_operation exchange_pair before = not before
+apply_operation put_in_initial_order before = False
+apply_operation normalize_sign before = False
+
+public export
+pair_button : Target operation_name
+pair_button = NamedTarget button_target 10 "exchange the pair" exchange_pair
+
+public export
+sign_formula : Target operation_name
+sign_formula = NamedTarget formula_target 20 "replace the negative sign" normalize_sign
+
+public export
+initial_order_button : Target operation_name
+initial_order_button = NamedTarget button_target 30 "restore initial order" put_in_initial_order
+
+public export
+pair_picture : Bool → Picture two_pixels operation_name
+pair_picture before (PixelAt FZ _) = PaintSample paper_ink (Just pair_button)
+pair_picture before (PixelAt (FS FZ) _) =
+  PaintSample (if before then coral_ink else cyan_ink) Nothing
+
+public export
+formula_picture : Bool → Picture two_pixels operation_name
+formula_picture negative (PixelAt FZ _) = PaintSample paper_ink (Just sign_formula)
+formula_picture negative (PixelAt (FS FZ) _) =
+  PaintSample (if negative then coral_ink else cyan_ink) Nothing
+
+-- A formula displaying ONLY x squared hides the distinction between -1 and 1.
+-- The constant result-only renderer must fail the responsiveness contract.
+public export
+result_only_formula : Bool → Picture two_pixels operation_name
+result_only_formula negative (PixelAt FZ _) = PaintSample paper_ink (Just sign_formula)
+result_only_formula negative (PixelAt (FS FZ) _) = PaintSample cyan_ink Nothing
+
+public export
+meaningful_result : operation_name → Bool → PixelAddress two_pixels → Bool
+meaningful_result command before (PixelAt FZ _) = False
+meaningful_result command before (PixelAt (FS FZ) _) = True
+
+public export
+pair_behaviour : Behaviour Bool operation_name two_pixels
+pair_behaviour = DescribeBehaviour apply_operation pair_picture meaningful_result decEq
+
+public export
+formula_behaviour : Behaviour Bool operation_name two_pixels
+formula_behaviour = DescribeBehaviour apply_operation formula_picture meaningful_result decEq
+
+public export
+broken_formula_behaviour : Behaviour Bool operation_name two_pixels
+broken_formula_behaviour = DescribeBehaviour apply_operation result_only_formula meaningful_result decEq
+
+-- Reproduce the earlier moving-dot problem without a GPU: draw the target at
+-- x=133. Nothing at its old x=86 can count as hitting the visible dot.
+public export
+moving_canvas : Canvas
+moving_canvas = CanvasSize 360 1
+
+public export
+moving_dot : Picture moving_canvas operation_name
+moving_dot point =
+  if finToNat (column point) ≟ 133
+    then PaintSample coral_ink (Just (NamedTarget strand_target 40 "moving strand" exchange_pair))
+    else PaintSample background_ink Nothing

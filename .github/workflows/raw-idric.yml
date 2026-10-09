@@ -1,0 +1,34 @@
+name: Raw Idric response contracts
+on:
+  pull_request:
+    paths: ['raw-idric/**', '.github/workflows/raw-idric.yml']
+  push:
+    branches: [raw-idric]
+permissions:
+  contents: read
+concurrency:
+  group: raw-idric-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  typed-response:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: isomorphisms/Idric
+          ref: 94dfd99bd3e376507fedc8611053b7173b2519f0
+          path: .raw-idric-compiler
+          persist-credentials: false
+      - name: Bootstrap pinned Idric, not an alternate compiler
+        run: |
+          cd .raw-idric-compiler
+          ./edric bootstrap
+      - name: Typecheck contracts, reject negative programs, execute raster fixtures
+        env:
+          IDRIC_CHECKOUT: ${{ github.workspace }}/.raw-idric-compiler
+        run: bash raw-idric/_/check.sh

@@ -1,0 +1,95 @@
+module Swap.Raw.Response
+
+import public Swap.Raw.Screen
+import public Decidable.Equality
+
+-- Meaning first: apply this operation, draw ITS result, and find a changed
+-- pixel in the part of the picture that explains this operation.
+-- A revision counter, callback invocation, or changed object address is not
+-- a visual-change witness.
+
+public export
+record Behaviour (model : Type) (action : Type) (canvas : Canvas) where
+  constructor DescribeBehaviour
+  perform : action → model → model
+  draw : model → Picture canvas action
+  result_region : action → model → PixelAddress canvas → Bool
+  same_model : (first : model) → (second : model) → Dec (first = second)
+
+public export
+same_result_pixel : (behaviour : Behaviour model action canvas) →
+                    action → model → PixelAddress canvas → Bool
+same_result_pixel behaviour command before point =
+  colour_code (ink (draw behaviour before point)) ≟
+  colour_code (ink (draw behaviour (perform behaviour command before) point))
+
+public export
+record VisibleChange {model : Type} {action : Type} {canvas : Canvas}
+                     (behaviour : Behaviour model action canvas)
+                     (command : action) (before : model) where
+  constructor ChangedResultPixel
+  changed_pixel : PixelAddress canvas
+  explains_the_result : result_region behaviour command before changed_pixel = True
+  pixels_differ : same_result_pixel behaviour command before changed_pixel = False
+
+-- Indexed alternatives need the bootstrap GADT form: the pinned choice
+-- syntax currently supports unindexed alternatives only. No language fork.
+public export
+data Response : (behaviour : Behaviour model action canvas) →
+                (command : action) → (before : model) → Type where
+  AtFixedPoint : perform behaviour command before = before →
+                Response behaviour command before
+  NeedsDrawing : Not (perform behaviour command before = before) →
+                 VisibleChange behaviour command before →
+                 Response behaviour command before
+  UnobservableChange : Not (perform behaviour command before = before) →
+                       Response behaviour command before
+
+find_changed_pixel : (behaviour : Behaviour model action canvas) →
+                     (command : action) → (before : model) →
+                     List (PixelAddress canvas) →
+                     Maybe (VisibleChange behaviour command before)
+find_changed_pixel behaviour command before [] = Nothing
+find_changed_pixel behaviour command before (point :: rest) =
+  case decEq (result_region behaviour command before point) True of
+    No _ => find_changed_pixel behaviour command before rest
+    Yes relevant =>
+      case decEq (same_result_pixel behaviour command before point) False of
+        No _ => find_changed_pixel behaviour command before rest
+        Yes different => Just (ChangedResultPixel point relevant different)
+
+export
+respond_to_action : {canvas : Canvas} →
+                    (behaviour : Behaviour model action canvas) →
+                    (command : action) → (before : model) →
+                    Response behaviour command before
+respond_to_action {canvas} behaviour command before =
+  case same_model behaviour (perform behaviour command before) before of
+    Yes fixed => AtFixedPoint fixed
+    No changed =>
+      case find_changed_pixel behaviour command before (all_pixels canvas) of
+        Just witness => NeedsDrawing changed witness
+        Nothing => UnobservableChange changed
+
+-- The operation cannot be substituted for another button's operation:
+-- it is selected by the hit proof for this exact state-derived picture.
+export
+respond_to_touch : {canvas : Canvas} →
+                   (behaviour : Behaviour model action canvas) →
+                   (before : model) → (point : PixelAddress canvas) →
+                   (hit : Hit (draw behaviour before) point) →
+                   Response behaviour (operation (target hit)) before
+respond_to_touch behaviour before point hit =
+  respond_to_action behaviour (operation (target hit)) before
+
+public export
+choice response_kind one_of
+  already_at_result
+  visible_update_required
+  invisible_update_refused
+
+export
+kind_of_response : Response behaviour command before → response_kind
+kind_of_response (AtFixedPoint _) = already_at_result
+kind_of_response (NeedsDrawing _ _) = visible_update_required
+kind_of_response (UnobservableChange _) = invisible_update_refused

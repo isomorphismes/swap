@@ -1,0 +1,98 @@
+module Swap.Raw.Tests
+
+import Swap.Raw.Examples
+import Swap.Raw.Native
+import System
+
+assert_test : Text → Bool → IO ()
+assert_test label True = putStrLn ("PASS " ++ label)
+assert_test label False = do
+  putStrLn ("FAIL " ++ label)
+  exitFailure
+
+is_visible : Response behaviour command before → Bool
+is_visible (NeedsDrawing _ _) = True
+is_visible _ = False
+
+is_fixed : Response behaviour command before → Bool
+is_fixed (AtFixedPoint _) = True
+is_fixed _ = False
+
+is_refused : Response behaviour command before → Bool
+is_refused (UnobservableChange _) = True
+is_refused _ = False
+
+has_target : Maybe (Hit picture point) → Bool
+has_target (Just _) = True
+has_target Nothing = False
+
+-- Compile-time witnesses bind the operation, state, result region and colour
+-- change. These must reduce to actual raster changes, not metadata changes.
+pair_changes : VisibleChange pair_behaviour exchange_pair False
+pair_changes = ChangedResultPixel result_pixel Refl Refl
+
+formula_changes : VisibleChange formula_behaviour normalize_sign True
+formula_changes = ChangedResultPixel result_pixel Refl Refl
+
+-- Negative programs are typechecked by the compiler's failing declaration.
+-- They are not disabled comments, runtime assertions, or fabricated proofs.
+failing
+  unchanged_pixels_are_success : VisibleChange broken_formula_behaviour normalize_sign True
+  unchanged_pixels_are_success = ChangedResultPixel result_pixel Refl Refl
+
+failing
+  control_flash_counts_as_result : VisibleChange pair_behaviour exchange_pair False
+  control_flash_counts_as_result = ChangedResultPixel control_pixel Refl Refl
+
+failing
+  wrong_state_is_a_fixed_point : Response pair_behaviour exchange_pair False
+  wrong_state_is_a_fixed_point = AtFixedPoint Refl
+
+failing
+  empty_pixel_is_button : Hit (pair_picture False) result_pixel
+  empty_pixel_is_button = HitPaintedTarget pair_button Refl
+
+failing
+  duplicate_native_resource : (1 resource : resource_type) → (resource_type, resource_type)
+  duplicate_native_resource resource = (resource, resource)
+
+failing
+  discard_native_resource : (1 resource : resource_type) → ()
+  discard_native_resource resource = ()
+
+main : IO ()
+main = do
+  case pick_painted_target (draw pair_behaviour False) control_pixel of
+    Nothing => assert_test "painted button was picked" False
+    Just hit => assert_test "touch -> correct action -> changed result pixel"
+      (is_visible (respond_to_touch pair_behaviour False control_pixel hit))
+  assert_test "exchange changes both starting states"
+    (is_visible (respond_to_action pair_behaviour exchange_pair False) &&
+     is_visible (respond_to_action pair_behaviour exchange_pair True))
+  assert_test "idempotent reset still changes its first nonfixed input"
+    (is_visible (respond_to_action pair_behaviour put_in_initial_order True))
+  assert_test "reset at its fixed point need not change the picture"
+    (is_fixed (respond_to_action pair_behaviour put_in_initial_order False))
+  case pick_painted_target (draw formula_behaviour True) control_pixel of
+    Nothing => assert_test "painted formula was picked" False
+    Just hit => assert_test "formula touch changes the displayed input"
+      (is_visible (respond_to_touch formula_behaviour True control_pixel hit))
+  assert_test "equal formula outputs cannot hide a changed input"
+    (is_refused (respond_to_action broken_formula_behaviour normalize_sign True))
+  assert_test "noninteractive result is not a button"
+    (not (has_target (pick_painted_target (pair_picture False) result_pixel)))
+  case pixel_at moving_canvas 133 0 of
+    Nothing => assert_test "moving point lies on canvas" False
+    Just point => assert_test "pick follows the moving dot at 133"
+      (has_target (pick_painted_target moving_dot point))
+  case pixel_at moving_canvas 86 0 of
+    Nothing => assert_test "old point lies on canvas" False
+    Just point => assert_test "old resting location is not a phantom target"
+      (not (has_target (pick_painted_target moving_dot point)))
+  assert_test "outside canvas cannot become a typed pixel"
+    (case pixel_at two_pixels 2 0 of Nothing => True; Just _ => False)
+  let occluded = \point => paint_over (Just (PaintSample background_ink Nothing))
+                                     (pair_picture False point)
+  assert_test "opaque overlay blocks the covered button"
+    (not (has_target (pick_painted_target occluded control_pixel)))
+  putStrLn "Raw Idric: reference raster/response tests only; no GPU, NDK or physical display claim"

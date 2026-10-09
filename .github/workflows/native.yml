@@ -62,6 +62,10 @@ jobs:
           ./edric bootstrap
       - name: Typecheck and run Swap's Idriç semantic/touch tests
         run: |
+          # The pinned bootstrap leaves the libraries in the source checkout;
+          # it does not install a global Prelude search directory.
+          idric_lib="$GITHUB_WORKSPACE/.idric-compiler/_/libs"
+          export IDRIS2_PATH="$idric_lib/prelude/build/ttc:$idric_lib/base/build/ttc:$idric_lib/contrib/build/ttc:$idric_lib/linear/build/ttc:$idric_lib/network/build/ttc:$idric_lib/test/build/ttc"
           cd idric
           ../.idric-compiler/_/build/exec/idris2 --build swap.ipkg
           ./build/exec/swap-idric-tests

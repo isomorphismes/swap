@@ -25,6 +25,7 @@ With the pinned Idriç compiler from
 `isomorphisms/Idric@94dfd99bd3e376507fedc8611053b7173b2519f0`:
 
 ```sh
+export IDRIS2_PATH="/path/to/Idric/_/libs/prelude/build/ttc:/path/to/Idric/_/libs/base/build/ttc:/path/to/Idric/_/libs/contrib/build/ttc:/path/to/Idric/_/libs/linear/build/ttc:/path/to/Idric/_/libs/network/build/ttc:/path/to/Idric/_/libs/test/build/ttc"
 cd idric
 /path/to/Idric/_/build/exec/idris2 --build swap.ipkg
 ./build/exec/swap-idric-tests

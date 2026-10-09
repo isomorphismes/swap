@@ -33,6 +33,26 @@ stored word. At the 128-move storage limit, new moves are refused without
 changing existing history. No factorials, formula quizzes or general palette
 generator are part of this scene.
 
+## Additional small scenes
+
+The top tabs keep the working **THREE** braid/triangle scene intact and add
+three independently testable experiments:
+
+- **TWO:** two coloured strands, one signed crossing generator, independent
+  stored history and visible winding. Two same-sign crossings return the
+  endpoints but not the braid to its initial class.
+- **GRID:** a drawable, tappable 3×3 tic-tac-toe board with X/O turns, win/draw
+  detection and reset. No conjectured mathematical relation is imposed.
+- **SETS:** two-circle membership Venn view with a 2×2 table, a three-circle
+  view with an eight-vertex cube, and higher binary tensor tables displayed
+  as 2×2 slices. The UI initially offers up to seven binary axes; the model
+  supports up to 63 without allocating exponentially many cells. Atom selection
+  is separate from any claim of Bayesian inference or p-adic semantics.
+
+[Small views and tensor indexing](docs/discrete-views.md) states the exact
+meaning of the displays and outstanding decisions. The new modes still
+require physical-device touch/graphics acceptance.
+
 ## Code and sketches
 
 - `src/swap.c`: small independent state and geometry model, using Icky C `×`/`÷`.

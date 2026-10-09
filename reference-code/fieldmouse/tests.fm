@@ -1,0 +1,59 @@
+// Native Field Mouse acceptance tests for the Rough.js generator subset.
+function roughCheck(ok, reason) {
+  if (!ok) {
+    console.log("FAIL " + reason);
+    exit(1);
+  }
+  return 1;
+}
+
+function roughClose(a, b) {
+  return roughAbs(a - b) < 0.0000001;
+}
+
+var seeded ← roughOptions(17);
+roughCheck(roughClose(roughRandom(seeded), 820607 / 2147483648),
+  "Random.next seeded Math.imul compatibility");
+
+var straightA ← roughLine(10, 20, 100, 180, roughOptions(17));
+var straightB ← roughLine(10, 20, 100, 180, roughOptions(17));
+roughCheck(straightA.sets[0].ops.length ≟ 4, "two strokes, four operations");
+roughCheck(stringifyJson(straightA.sets[0].ops) ≟
+  stringifyJson(straightB.sets[0].ops), "seed repeatability");
+
+var straightC ← roughLine(10, 20, 100, 180, roughOptions(18));
+roughCheck(stringifyJson(straightA.sets[0].ops) ≠
+  stringifyJson(straightC.sets[0].ops), "different seed changes jitter");
+
+var one ← roughOptions(17);
+one.disableMultiStroke ← true;
+var onlyOne ← roughLine(10, 20, 100, 180, one);
+roughCheck(onlyOne.sets[0].ops.length ≟ 2, "single-stroke option");
+
+var polygon ← roughPolygon([[10, 10], [100, 10], [100, 100]], roughOptions(6));
+roughCheck(polygon.sets[0].ops.length ≟ 12,
+  "triangle has three edges and two strokes per edge");
+
+var rectangle ← roughRectangle(1, 2, 40, 50, roughOptions(7));
+roughCheck(rectangle.sets[0].ops.length ≟ 16, "rectangle has four edges");
+
+var filled ← roughOptions(1);
+filled.fill ← "#ff0000";
+var shape ← roughRectangle(10, 20, 30, 40, filled);
+roughCheck(shape.sets.length ≟ 2, "fill and outline are separate operation sets");
+roughCheck(shape.sets[0].type ≟ "fillPath", "solid fill precedes outline");
+
+var curve ← roughCurve([[10, 20], [50, 40], [90, 20], [140, 45]], roughOptions(9));
+roughCheck(curve.sets[0].ops.length ≟ 8, "curve has underlay and overlay");
+
+var circle ← roughCircle(100, 100, 70, roughOptions(3));
+roughCheck(circle.shape ≟ "circle", "circle generator label");
+roughCheck(circle.sets[0].ops.length > 4, "ellipse sampled as cubic curves");
+roughCheck(roughClose(roughSin(0), 0), "sine zero");
+roughCheck(roughClose(roughCos(0), 1), "cosine zero");
+roughCheck(roughClose(roughSqrt(144), 12), "square root");
+
+var svg ← roughSvgDocument([straightA, polygon, circle], 300, 200);
+roughCheck(svg ≠ "", "SVG serialization");
+roughCheck(roughPathData(straightA.sets[0]) ≠ "", "operation-to-path adapter");
+console.log("PASS Field Mouse Rough.js generator subset");

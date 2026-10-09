@@ -1,0 +1,11 @@
+.deps/
+build/
+build-*/
+dist/
+*.apk
+*.keystore
+*.jks
+*.p12
+symbols.txt
+.aici-host/
+.ick-*/

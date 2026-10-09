@@ -1,0 +1,5 @@
+build_id	target	toolchain	ick_revision	ick_status	ick_evidence
+swap-host-model	linux-x86_64	ick	c61e448251744a2f40ad743ebef1a027bdcd2f9d	candidate	docs/android.md
+swap-android-c	android-api21-armv7-aarch64	ick	c61e448251744a2f40ad743ebef1a027bdcd2f9d	candidate	docs/android.md
+swap-android-link	android-api21-armv7-aarch64	ndk	c61e448251744a2f40ad743ebef1a027bdcd2f9d	gap:Android platform assembly linker runtime	docs/android.md
+swap-contract-check	linux-x86_64	ick	c61e448251744a2f40ad743ebef1a027bdcd2f9d	candidate	docs/android.md

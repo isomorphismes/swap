@@ -1,0 +1,71 @@
+name: Swap native slice
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: swap-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  host-model:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - id: ick
+        uses: isomorphisms/ai-ci/ick-host@015cc7901ae0b3ad262b476f24e129b53c56db95
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: isomorphisms/ai-ci
+          ref: 015cc7901ae0b3ad262b476f24e129b53c56db95
+          path: .aici-host
+          sparse-checkout: |
+            src/aici.c
+            contracts/build-toolchain-v0.contract.tsv
+          persist-credentials: false
+      - name: Enforce shared build-toolchain contract
+        run: make -f ci/Makefile verify ICK='${{ steps.ick.outputs.compiler }}'
+      - name: Model and geometry checks (not Android evidence)
+        env:
+          ICK_CC: ${{ steps.ick.outputs.compiler }}
+        run: |
+          cmake -S . -B build/host -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/host
+          ctest --test-dir build/host --output-on-failure
+      - name: Shell syntax
+        run: |
+          for script in scripts/*.sh; do bash -n "$script"; done
+  android-native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [armeabi-v7a, arm64-v8a]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Install pinned Android NDK
+        id: ndk
+        run: |
+          source DEPS.lock
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$ANDROID_NDK_VERSION"
+          printf 'path=%s/ndk/%s\n' "$ANDROID_HOME" "$ANDROID_NDK_VERSION" >> "$GITHUB_OUTPUT"
+      - id: compiler
+        uses: isomorphisms/ai-ci/ick-android@015cc7901ae0b3ad262b476f24e129b53c56db95
+        with:
+          abi: ${{ matrix.abi }}
+          ndk: ${{ steps.ndk.outputs.path }}
+      - name: Build ICK C through the Android NDK platform boundary
+        env:
+          ICK_CC: ${{ steps.compiler.outputs.compiler }}
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.path }}
+        run: bash scripts/android-build.sh '${{ matrix.abi }}'
+      # No installable artifact is published from this un-enrolled signing lane.

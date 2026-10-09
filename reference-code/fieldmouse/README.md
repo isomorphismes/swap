@@ -6,7 +6,7 @@ one particular Swap picture. The engine returns Rough.js-style **drawing
 operations** (path operation sets); SVG generation is a separate adapter.
 The small JavaScript reference remains independently readable.
 
-Source: [Rough.js](https://github.com/rough-stuff/rough), in particular
+Source: [Rough.js @ 56a2762](https://github.com/rough-stuff/rough/tree/56a2762171b1294d643501e8d14f120db6b27bd7), in particular
 `src/renderer.ts`, `src/math.ts` and `src/generator.ts` (MIT; notice in
 [`../LICENSE.roughjs`](../LICENSE.roughjs)). The reference generator is
 [`../roughjs/line-reference.mjs`](../roughjs/line-reference.mjs).

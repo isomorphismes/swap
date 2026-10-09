@@ -25,3 +25,8 @@ circles/ellipses, SVG serialization, a launcher using the actual
 
 These are reference implementations, **not** a commitment to using Rough.js
 or the Field Mouse port as Swap's production Android renderer.
+## Reference materials
+
+Photographic research notes on Montessori cylinders, rods, triangles, bead
+materials, and related mathematical toys:
+[Montessori material references](notes/montessori-materials.md).

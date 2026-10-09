@@ -1,0 +1,134 @@
+// Ellipse and circle translation of Rough.js's sampled curve generator.
+// Requires Rough.fm first. Trig uses explicit Taylor arithmetic because
+// Field Mouse's current runtime has no Math namespace or remainder operator.
+
+function roughAbs(value) {
+  if (value < 0) { return -value; }
+  return value;
+}
+
+function roughSin(angle) {
+  var pi ← 3.141592653589793;
+  var circle ← 2 * pi;
+  while (angle > pi) { angle ← angle - circle; }
+  while (angle < -pi) { angle ← angle + circle; }
+  var term ← angle;
+  var result ← angle;
+  var n ← 1;
+  while (n < 15) {
+    term ← -term * angle * angle / ((2 * n) * (2 * n + 1));
+    result ← result + term;
+    n ← n + 1;
+  }
+  return result;
+}
+
+function roughCos(angle) {
+  return roughSin(angle + 1.5707963267948966);
+}
+
+function roughEllipsePoints(increment, cx, cy, rx, ry, offset, overlap, o) {
+  var pi ← 3.141592653589793;
+  var points ← [];
+  if (o.roughness ≟ 0) {
+    var small ← increment / 4;
+    roughPush(points, [
+      cx + rx * roughCos(-small), cy + ry * roughSin(-small)
+    ]);
+    var a ← 0;
+    while (a <= 2 * pi) {
+      roughPush(points, [
+        cx + rx * roughCos(a), cy + ry * roughSin(a)
+      ]);
+      a ← a + small;
+    }
+    roughPush(points, [cx + rx, cy]);
+    roughPush(points, [
+      cx + rx * roughCos(small), cy + ry * roughSin(small)
+    ]);
+  } else {
+    var start ← roughOffset(0.5, o, 1) - pi / 2;
+    roughPush(points, [
+      roughOffset(offset, o, 1) + cx + 0.9 * rx * roughCos(start - increment),
+      roughOffset(offset, o, 1) + cy + 0.9 * ry * roughSin(start - increment)
+    ]);
+    var stop ← 2 * pi + start - 0.01;
+    var angle ← start;
+    while (angle < stop) {
+      roughPush(points, [
+        roughOffset(offset, o, 1) + cx + rx * roughCos(angle),
+        roughOffset(offset, o, 1) + cy + ry * roughSin(angle)
+      ]);
+      angle ← angle + increment;
+    }
+    roughPush(points, [
+      roughOffset(offset, o, 1) + cx +
+        rx * roughCos(start + 2 * pi + overlap * 0.5),
+      roughOffset(offset, o, 1) + cy +
+        ry * roughSin(start + 2 * pi + overlap * 0.5)
+    ]);
+    roughPush(points, [
+      roughOffset(offset, o, 1) + cx +
+        0.98 * rx * roughCos(start + overlap),
+      roughOffset(offset, o, 1) + cy +
+        0.98 * ry * roughSin(start + overlap)
+    ]);
+    roughPush(points, [
+      roughOffset(offset, o, 1) + cx +
+        0.9 * rx * roughCos(start + overlap * 0.5),
+      roughOffset(offset, o, 1) + cy +
+        0.9 * ry * roughSin(start + overlap * 0.5)
+    ]);
+  }
+  return points;
+}
+
+function roughEllipseOps(cx, cy, rx, ry, inc, o) {
+  var inner ← roughOffsetRange(0.4, 1, o, 1);
+  var overlap ← inc * roughOffsetRange(0.1, inner, o, 1);
+  var first ← roughEllipsePoints(inc, cx, cy, rx, ry, 1, overlap, o);
+  var ops ← roughCurveOps(first, o);
+  if (!o.disableMultiStroke && o.roughness ≠ 0) {
+    var second ← roughEllipsePoints(inc, cx, cy, rx, ry, 1.5, 0, o);
+    roughPushAll(ops, roughCurveOps(second, o));
+  }
+  return ops;
+}
+
+function roughEllipse(cx, cy, width, height, o) {
+  var pi ← 3.141592653589793;
+  var radiusX ← roughAbs(width / 2);
+  var radiusY ← roughAbs(height / 2);
+  var psq ← roughSqrt(2 * pi *
+    roughSqrt((radiusX * radiusX + radiusY * radiusY) / 2));
+  var desiredSteps ← (o.curveStepCount / roughSqrt(200)) * psq;
+  var steps ← o.curveStepCount;
+  while (steps < desiredSteps) {
+    steps ← steps + 1;
+  }
+  var inc ← (2 * pi) / steps;
+  radiusX ← radiusX + roughOffset(radiusX * (1 - o.curveFitting), o, 1);
+  radiusY ← radiusY + roughOffset(radiusY * (1 - o.curveFitting), o, 1);
+  var outline ← roughEllipseOps(cx, cy, radiusX, radiusY, inc, o);
+  var sets ← [];
+  if (o.fill ≠ "none") {
+    if (o.fillStyle ≠ "solid") {
+      console.log("Only solid fill is ported; hachure is not yet ported.");
+      exit(64);
+    }
+    roughPush(sets, {
+      type: "fillPath",
+      ops: roughEllipseOps(cx, cy, radiusX, radiusY, inc, o)
+    });
+  }
+  if (o.stroke ≠ "none") {
+    roughPush(sets, {type: "path", ops: outline});
+  }
+  return {shape: "ellipse", options: o, sets: sets};
+}
+
+function roughCircle(cx, cy, diameter, o) {
+  var shape ← roughEllipse(cx, cy, diameter, diameter, o);
+  shape.shape ← "circle";
+  return shape;
+}

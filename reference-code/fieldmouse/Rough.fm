@@ -1,0 +1,394 @@
+// Rough.js generator port for Field Mouse.
+// Source algorithm: rough-stuff/rough, src/renderer.ts and src/math.ts (MIT).
+// This file is native Field Mouse syntax, not JavaScript.
+// Load before demo.fm or parity.fm using run.sh.
+
+function roughOptions(seed) {
+  if (seed < 1 || seed >= 2147483648) {
+    console.log("Rough Field Mouse requires a seed in [1, 2147483647]");
+    exit(64);
+  }
+  return {
+    seed: seed,
+    randomState: seed,
+    roughness: 1,
+    bowing: 1,
+    maxRandomnessOffset: 2,
+    disableMultiStroke: Ø,
+    preserveVertices: Ø,
+    curveTightness: 0,
+    curveFitting: 0.95,
+    curveStepCount: 9,
+    stroke: "#000000",
+    strokeWidth: 1,
+    fill: "none",
+    fillStyle: "solid"
+  };
+}
+
+// Port of Random.next(): (Math.imul(48271, state) & 0x7fffffff) / 2^31.
+// The product is exactly representable in a Double. Binary subtraction
+// replaces the unavailable integer modulo / bitwise operators.
+function roughRandom(o) {
+  var remainder ← o.randomState * 48271;
+  var step ← 2147483648 * 32768;
+  while (step >= 2147483648) {
+    if (remainder >= step) {
+      remainder ← remainder - step;
+    }
+    step ← step / 2;
+  }
+  o.randomState ← remainder;
+  return remainder / 2147483648;
+}
+
+function roughOffsetRange(minValue, maxValue, o, gain) {
+  return o.roughness * gain *
+    ((roughRandom(o) * (maxValue - minValue)) + minValue);
+}
+
+function roughOffset(magnitude, o, gain) {
+  return roughOffsetRange(-magnitude, magnitude, o, gain);
+}
+
+function roughSqrt(value) {
+  if (value <= 0) { return 0; }
+  var guess ← value;
+  if (guess < 1) { guess ← 1; }
+  var count ← 0;
+  while (count < 32) {
+    guess ← (guess + value / guess) / 2;
+    count ← count + 1;
+  }
+  return guess;
+}
+
+function roughPush(xs, item) {
+  xs[xs.length] ← item;
+  return xs;
+}
+
+function roughPushAll(xs, more) {
+  var i ← 0;
+  while (i < more.length) {
+    roughPush(xs, more[i]);
+    i ← i + 1;
+  }
+  return xs;
+}
+
+function roughStroke(x1, y1, x2, y2, o, overlay) {
+  var dx ← x2 - x1;
+  var dy ← y2 - y1;
+  var lengthSquared ← dx * dx + dy * dy;
+  var length ← roughSqrt(lengthSquared);
+  var gain ← 1;
+  if (length > 500) {
+    gain ← 0.4;
+  } else {
+    if (length >= 200) {
+      gain ← -0.0016668 * length + 1.233334;
+    }
+  }
+
+  var offset ← o.maxRandomnessOffset;
+  if (offset * offset * 100 > lengthSquared) {
+    offset ← length / 10;
+  }
+
+  var halfOffset ← offset / 2;
+  var diverge ← 0.2 + roughRandom(o) * 0.2;
+  var midX ← o.bowing * o.maxRandomnessOffset * (y2 - y1) / 200;
+  var midY ← o.bowing * o.maxRandomnessOffset * (x1 - x2) / 200;
+  midX ← roughOffset(midX, o, gain);
+  midY ← roughOffset(midY, o, gain);
+
+  var startX ← x1;
+  var startY ← y1;
+  if (!o.preserveVertices) {
+    if (overlay) {
+      startX ← startX + roughOffset(halfOffset, o, gain);
+      startY ← startY + roughOffset(halfOffset, o, gain);
+    } else {
+      startX ← startX + roughOffset(offset, o, gain);
+      startY ← startY + roughOffset(offset, o, gain);
+    }
+  }
+
+  var size ← offset;
+  if (overlay) { size ← halfOffset; }
+
+  var c1x ← midX + x1 + dx * diverge + roughOffset(size, o, gain);
+  var c1y ← midY + y1 + dy * diverge + roughOffset(size, o, gain);
+  var c2x ← midX + x1 + 2 * dx * diverge + roughOffset(size, o, gain);
+  var c2y ← midY + y1 + 2 * dy * diverge + roughOffset(size, o, gain);
+
+  var endX ← x2;
+  var endY ← y2;
+  if (!o.preserveVertices) {
+    endX ← endX + roughOffset(size, o, gain);
+    endY ← endY + roughOffset(size, o, gain);
+  }
+
+  return [
+    {op: "move", data: [startX, startY]},
+    {op: "bcurveTo", data: [c1x, c1y, c2x, c2y, endX, endY]}
+  ];
+}
+
+function roughDoubleStroke(x1, y1, x2, y2, o) {
+  var ops ← roughStroke(x1, y1, x2, y2, o, Ø);
+  if (!o.disableMultiStroke) {
+    roughPushAll(ops, roughStroke(x1, y1, x2, y2, o, true));
+  }
+  return ops;
+}
+
+function roughLine(x1, y1, x2, y2, o) {
+  return {
+    shape: "line",
+    options: o,
+    sets: [{type: "path", ops: roughDoubleStroke(x1, y1, x2, y2, o)}]
+  };
+}
+
+function roughLinearOps(points, close, o) {
+  var ops ← [];
+  var n ← points.length;
+  var i ← 0;
+  while (i + 1 < n) {
+    roughPushAll(ops,
+      roughDoubleStroke(points[i][0], points[i][1],
+        points[i + 1][0], points[i + 1][1], o));
+    i ← i + 1;
+  }
+  if (close && n > 2) {
+    roughPushAll(ops,
+      roughDoubleStroke(points[n - 1][0], points[n - 1][1],
+        points[0][0], points[0][1], o));
+  }
+  return ops;
+}
+
+function roughSolidFill(points, o) {
+  var ops ← [];
+  if (points.length > 2) {
+    var offset ← o.maxRandomnessOffset;
+    roughPush(ops, {
+      op: "move",
+      data: [
+        points[0][0] + roughOffset(offset, o, 1),
+        points[0][1] + roughOffset(offset, o, 1)
+      ]
+    });
+    var i ← 1;
+    while (i < points.length) {
+      roughPush(ops, {
+        op: "lineTo",
+        data: [
+          points[i][0] + roughOffset(offset, o, 1),
+          points[i][1] + roughOffset(offset, o, 1)
+        ]
+      });
+      i ← i + 1;
+    }
+  }
+  return {type: "fillPath", ops: ops};
+}
+
+function roughPolygon(points, o) {
+  var outline ← roughLinearOps(points, true, o);
+  var sets ← [];
+  if (o.fill ≠ "none") {
+    if (o.fillStyle ≠ "solid") {
+      console.log("Only solid fill is ported; hachure is not yet ported.");
+      exit(64);
+    }
+    roughPush(sets, roughSolidFill(points, o));
+  }
+  if (o.stroke ≠ "none") {
+    roughPush(sets, {type: "path", ops: outline});
+  }
+  return {shape: "polygon", options: o, sets: sets};
+}
+
+function roughRectangle(x, y, width, height, o) {
+  var points ← [
+    [x, y], [x + width, y],
+    [x + width, y + height], [x, y + height]
+  ];
+  var drawable ← roughPolygon(points, o);
+  drawable.shape ← "rectangle";
+  return drawable;
+}
+
+function roughLinearPath(points, o) {
+  return {
+    shape: "linearPath", options: o,
+    sets: [{type: "path", ops: roughLinearOps(points, Ø, o)}]
+  };
+}
+
+// Port of renderer._curve(), translating Catmull-Rom control points
+// into cubic Bézier operations. The doubled endpoint points are built
+// by roughCurveOffset(), exactly as in the Rough.js renderer.
+function roughCurveOps(points, o) {
+  var ops ← [];
+  var n ← points.length;
+  if (n > 3) {
+    var tightness ← 1 - o.curveTightness;
+    roughPush(ops, {op: "move", data: [points[1][0], points[1][1]]});
+    var i ← 1;
+    while (i + 2 < n) {
+      var before ← points[i - 1];
+      var here ← points[i];
+      var next ← points[i + 1];
+      var after ← points[i + 2];
+      roughPush(ops, {
+        op: "bcurveTo",
+        data: [
+          here[0] + tightness * (next[0] - before[0]) / 6,
+          here[1] + tightness * (next[1] - before[1]) / 6,
+          next[0] + tightness * (here[0] - after[0]) / 6,
+          next[1] + tightness * (here[1] - after[1]) / 6,
+          next[0], next[1]
+        ]
+      });
+      i ← i + 1;
+    }
+  } else {
+    if (n ≟ 3) {
+      roughPush(ops, {op: "move", data: points[1]});
+      roughPush(ops, {
+        op: "bcurveTo", data: [
+          points[1][0], points[1][1],
+          points[2][0], points[2][1],
+          points[2][0], points[2][1]
+        ]
+      });
+    } else {
+      if (n ≟ 2) {
+        roughPushAll(ops,
+          roughStroke(points[0][0], points[0][1],
+            points[1][0], points[1][1], o, true));
+      }
+    }
+  }
+  return ops;
+}
+
+function roughCurveOffset(points, offset, o) {
+  var p ← [];
+  if (points.length ≟ 0) { return []; }
+  roughPush(p, [
+    points[0][0] + roughOffset(offset, o, 1),
+    points[0][1] + roughOffset(offset, o, 1)
+  ]);
+  roughPush(p, [
+    points[0][0] + roughOffset(offset, o, 1),
+    points[0][1] + roughOffset(offset, o, 1)
+  ]);
+  var i ← 1;
+  while (i < points.length) {
+    roughPush(p, [
+      points[i][0] + roughOffset(offset, o, 1),
+      points[i][1] + roughOffset(offset, o, 1)
+    ]);
+    if (i + 1 ≟ points.length) {
+      roughPush(p, [
+        points[i][0] + roughOffset(offset, o, 1),
+        points[i][1] + roughOffset(offset, o, 1)
+      ]);
+    }
+    i ← i + 1;
+  }
+  return roughCurveOps(p, o);
+}
+
+function roughOverlayOptions(o) {
+  var clone ← roughOptions(o.seed + 1);
+  clone.roughness ← o.roughness;
+  clone.bowing ← o.bowing;
+  clone.maxRandomnessOffset ← o.maxRandomnessOffset;
+  clone.disableMultiStroke ← o.disableMultiStroke;
+  clone.preserveVertices ← o.preserveVertices;
+  clone.curveTightness ← o.curveTightness;
+  clone.curveFitting ← o.curveFitting;
+  clone.curveStepCount ← o.curveStepCount;
+  clone.stroke ← o.stroke;
+  clone.strokeWidth ← o.strokeWidth;
+  clone.fill ← o.fill;
+  clone.fillStyle ← o.fillStyle;
+  return clone;
+}
+
+function roughCurve(points, o) {
+  var primary ← roughCurveOffset(points, 1 * (1 + o.roughness * 0.2), o);
+  if (!o.disableMultiStroke) {
+    var alt ← roughOverlayOptions(o);
+    roughPushAll(primary,
+      roughCurveOffset(points, 1.5 * (1 + o.roughness * 0.22), alt));
+  }
+  return {
+    shape: "curve", options: o,
+    sets: [{type: "path", ops: primary}]
+  };
+}
+
+// SVG serialization is the only output adapter in this initial port.
+// Generator operations themselves remain renderer-independent structured data.
+function roughPathData(opSet) {
+  var path ← "";
+  var i ← 0;
+  while (i < opSet.ops.length) {
+    var item ← opSet.ops[i];
+    var d ← item.data;
+    if (item.op ≟ "move") {
+      path ← path + "M" + d[0] + " " + d[1] + " ";
+    } else {
+      if (item.op ≟ "lineTo") {
+        path ← path + "L" + d[0] + " " + d[1] + " ";
+      } else {
+        if (item.op ≟ "bcurveTo") {
+          path ← path + "C" + d[0] + " " + d[1] + ", " +
+            d[2] + " " + d[3] + ", " + d[4] + " " + d[5] + " ";
+        }
+      }
+    }
+    i ← i + 1;
+  }
+  return path;
+}
+
+function roughSvgDrawable(drawable) {
+  var result ← "";
+  var i ← 0;
+  while (i < drawable.sets.length) {
+    var set ← drawable.sets[i];
+    var fill ← "none";
+    var stroke ← drawable.options.stroke;
+    var width ← drawable.options.strokeWidth;
+    if (set.type ≟ "fillPath") {
+      fill ← drawable.options.fill;
+      stroke ← "none";
+      width ← 0;
+    }
+    result ← result + "<path d=\"" + roughPathData(set) +
+      "\" fill=\"" + fill + "\" stroke=\"" + stroke +
+      "\" stroke-width=\"" + width +
+      "\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n";
+    i ← i + 1;
+  }
+  return result;
+}
+
+function roughSvgDocument(drawables, width, height) {
+  var result ← "<svg xmlns=\"http://www.w3.org/2000/svg\" " +
+    "viewBox=\"0 0 " + width + " " + height + "\">\n";
+  var i ← 0;
+  while (i < drawables.length) {
+    result ← result + roughSvgDrawable(drawables[i]);
+    i ← i + 1;
+  }
+  return result + "</svg>\n";
+}

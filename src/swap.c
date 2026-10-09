@@ -28,7 +28,7 @@ void swap_reset(SwapScene *scene) {
 }
 SwapResult swap_append(SwapScene *scene, SwapMove move) {
     if (!scene || !swap_move_valid(move)) return SWAP_INVALID_MOVE;
-    if (scene->cursor < (double)scene->count) return SWAP_BUSY;
+    /* Accept and queue rapid input while an earlier crossing animates. */
     if (scene->count >= SWAP_MAX_MOVES) return SWAP_HISTORY_FULL;
     scene->moves[scene->count++] = move;
     scene->paused = false;

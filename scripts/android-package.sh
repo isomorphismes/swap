@@ -10,7 +10,7 @@ for key in ANDROID_KEYSTORE ANDROID_KEYSTORE_TYPE ANDROID_KEY_ALIAS \
 done
 bash "$root/scripts/dependencies.sh"
 deps=${SWAP_DEPS_DIR:-$root/.deps}
-export ANDROID_PACKAGE_ID=org.isomorphismes.swap ANDROID_EXPECTED_LABEL=Swap
+export ANDROID_PACKAGE_ID=org.isomorphismes.swap.controls ANDROID_EXPECTED_LABEL="Swap Controls"
 export ANDROID_VERSION_CODE=1 ANDROID_VERSION_NAME=0.1.0
 export ANDROID_MIN_SDK=21 ANDROID_TARGET_SDK=35 ANDROID_REQUIRE_NO_DEX=1
 export ANDROID_SOURCE_COMMIT

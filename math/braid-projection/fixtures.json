@@ -1,0 +1,19 @@
+[
+  {"name":"empty","word":"","permutation":"012","winding_mod_three":0},
+  {"name":"word_a","word":"a","permutation":"102","winding_mod_three":1},
+  {"name":"word_A","word":"A","permutation":"102","winding_mod_three":2},
+  {"name":"word_b","word":"b","permutation":"021","winding_mod_three":1},
+  {"name":"word_B","word":"B","permutation":"021","winding_mod_three":2},
+  {"name":"word_aA","word":"aA","permutation":"012","winding_mod_three":0},
+  {"name":"word_Aa","word":"Aa","permutation":"012","winding_mod_three":0},
+  {"name":"word_bB","word":"bB","permutation":"012","winding_mod_three":0},
+  {"name":"word_Bb","word":"Bb","permutation":"012","winding_mod_three":0},
+  {"name":"word_aa","word":"aa","permutation":"012","winding_mod_three":2},
+  {"name":"word_AA","word":"AA","permutation":"012","winding_mod_three":1},
+  {"name":"word_aba","word":"aba","permutation":"210","winding_mod_three":0},
+  {"name":"word_bab","word":"bab","permutation":"210","winding_mod_three":0},
+  {"name":"word_aab","word":"aab","permutation":"021","winding_mod_three":0},
+  {"name":"word_Aab","word":"Aab","permutation":"021","winding_mod_three":1},
+  {"name":"word_aaaaaa","word":"aaaaaa","permutation":"012","winding_mod_three":0},
+  {"name":"word_aBabAB","word":"aBabAB","permutation":"012","winding_mod_three":0}
+]

@@ -1,0 +1,283 @@
+module BraidProjection
+
+-- B3 words, their presentation, and observations which respect that presentation.
+-- This is not a braid equality decision procedure or an Android implementation.
+-- The exported definitions unfold in downstream proof fixtures.
+
+public export
+choice crossing one_of
+  over_first
+  under_first
+  over_second
+  under_second
+
+public export
+BraidWord : Type
+BraidWord = List crossing
+
+public export
+inverse_crossing : crossing → crossing
+inverse_crossing over_first = under_first
+inverse_crossing under_first = over_first
+inverse_crossing over_second = under_second
+inverse_crossing under_second = over_second
+
+-- Each alternative is a bijection, not an arbitrary triple of identities.
+-- Digits name identities in the three successive slots, not machine integers.
+public export
+choice permutation one_of
+  order_012
+  order_021
+  order_102
+  order_120
+  order_201
+  order_210
+
+-- An explicit equivalence relation on WORDS, not propositional word equality.
+-- Indexed data uses the supported inherited declaration form. No new grammar
+-- or assumed equality of constructors is introduced by this experiment.
+public export
+data BraidEquivalent : BraidWord → BraidWord → Type where
+  SameWord : (word : BraidWord) → BraidEquivalent word word
+  ReverseProof : {left, right : BraidWord} →
+    BraidEquivalent left right → BraidEquivalent right left
+  JoinProofs : {left, middle, right : BraidWord} →
+    BraidEquivalent left middle → BraidEquivalent middle right →
+    BraidEquivalent left right
+  UnderCrossing : {left, right : BraidWord} → (generator : crossing) →
+    BraidEquivalent left right →
+    BraidEquivalent (generator :: left) (generator :: right)
+  CancelCrossing : (generator : crossing) → (rest : BraidWord) →
+    BraidEquivalent (generator :: inverse_crossing generator :: rest) rest
+  SlideThree : (rest : BraidWord) →
+    BraidEquivalent (over_first :: over_second :: over_first :: rest)
+                    (over_second :: over_first :: over_second :: rest)
+
+-- Laws are obligations on an observation, not axioms about arbitrary code.
+public export
+record BraidAction (state : Type) where
+  constructor ActsBy
+  move : crossing → state → state
+  cancellation : (generator : crossing) → (before : state) →
+    move (inverse_crossing generator) (move generator before) = before
+  braid_relation : (before : state) →
+    move over_first (move over_second (move over_first before)) =
+    move over_second (move over_first (move over_second before))
+
+public export
+run_word : {state : Type} → BraidAction state → BraidWord → state → state
+run_word action [] before = before
+run_word action (generator :: rest) before =
+  run_word action rest (move action generator before)
+
+-- Concatenation means first the left history, then the right history.
+public export
+run_concatenation : {state : Type} → (action : BraidAction state) →
+  (left, right : BraidWord) → (before : state) →
+  run_word action (left ++ right) before =
+  run_word action right (run_word action left before)
+run_concatenation action [] right before = Refl
+run_concatenation action (generator :: rest) right before =
+  run_concatenation action rest right (move action generator before)
+
+public export
+respects_braids : {state : Type} → (action : BraidAction state) →
+  {left, right : BraidWord} → BraidEquivalent left right →
+  (before : state) → run_word action left before = run_word action right before
+respects_braids action (SameWord word) before = Refl
+respects_braids action (ReverseProof proof) before =
+  sym (respects_braids action proof before)
+respects_braids action (JoinProofs first second) before =
+  trans (respects_braids action first before) (respects_braids action second before)
+respects_braids action (UnderCrossing generator proof) before =
+  respects_braids action proof (move action generator before)
+respects_braids action (CancelCrossing generator rest) before =
+  cong (run_word action rest) (cancellation action generator before)
+respects_braids action (SlideThree rest) before =
+  cong (run_word action rest) (braid_relation action before)
+
+-- Together with UnderCrossing, this gives arbitrary left/right contexts.
+public export
+append_context : {left, right : BraidWord} → BraidEquivalent left right →
+  (suffix : BraidWord) → BraidEquivalent (left ++ suffix) (right ++ suffix)
+append_context (SameWord word) suffix = SameWord (word ++ suffix)
+append_context (ReverseProof proof) suffix = ReverseProof (append_context proof suffix)
+append_context (JoinProofs first second) suffix =
+  JoinProofs (append_context first suffix) (append_context second suffix)
+append_context (UnderCrossing generator proof) suffix =
+  UnderCrossing generator (append_context proof suffix)
+append_context (CancelCrossing generator rest) suffix =
+  CancelCrossing generator (rest ++ suffix)
+append_context (SlideThree rest) suffix = SlideThree (rest ++ suffix)
+
+public export
+swap_first : permutation → permutation
+swap_first order_012 = order_102
+swap_first order_021 = order_201
+swap_first order_102 = order_012
+swap_first order_120 = order_210
+swap_first order_201 = order_021
+swap_first order_210 = order_120
+
+public export
+swap_second : permutation → permutation
+swap_second order_012 = order_021
+swap_second order_021 = order_012
+swap_second order_102 = order_120
+swap_second order_120 = order_102
+swap_second order_201 = order_210
+swap_second order_210 = order_201
+
+public export
+endpoint_move : crossing → permutation → permutation
+endpoint_move over_first = swap_first
+endpoint_move under_first = swap_first
+endpoint_move over_second = swap_second
+endpoint_move under_second = swap_second
+
+public export
+first_twice : (before : permutation) → swap_first (swap_first before) = before
+first_twice order_012 = Refl
+first_twice order_021 = Refl
+first_twice order_102 = Refl
+first_twice order_120 = Refl
+first_twice order_201 = Refl
+first_twice order_210 = Refl
+
+public export
+second_twice : (before : permutation) → swap_second (swap_second before) = before
+second_twice order_012 = Refl
+second_twice order_021 = Refl
+second_twice order_102 = Refl
+second_twice order_120 = Refl
+second_twice order_201 = Refl
+second_twice order_210 = Refl
+
+public export
+endpoint_cancellation : (generator : crossing) → (before : permutation) →
+  endpoint_move (inverse_crossing generator) (endpoint_move generator before) = before
+endpoint_cancellation over_first before = first_twice before
+endpoint_cancellation under_first before = first_twice before
+endpoint_cancellation over_second before = second_twice before
+endpoint_cancellation under_second before = second_twice before
+
+public export
+endpoint_braid_relation : (before : permutation) →
+  endpoint_move over_first (endpoint_move over_second (endpoint_move over_first before)) =
+  endpoint_move over_second (endpoint_move over_first (endpoint_move over_second before))
+endpoint_braid_relation order_012 = Refl
+endpoint_braid_relation order_021 = Refl
+endpoint_braid_relation order_102 = Refl
+endpoint_braid_relation order_120 = Refl
+endpoint_braid_relation order_201 = Refl
+endpoint_braid_relation order_210 = Refl
+
+public export
+endpoint_action : BraidAction permutation
+endpoint_action = ActsBy endpoint_move endpoint_cancellation endpoint_braid_relation
+
+public export
+project_endpoints : BraidWord → permutation
+project_endpoints word = run_word endpoint_action word order_012
+
+public export
+representative : permutation → BraidWord
+representative order_012 = []
+representative order_021 = [over_second]
+representative order_102 = [over_first]
+representative order_120 = [over_first, over_second]
+representative order_201 = [over_second, over_first]
+representative order_210 = [over_first, over_second, over_first]
+
+public export
+projection_surjective : (order : permutation) → project_endpoints (representative order) = order
+projection_surjective order_012 = Refl
+projection_surjective order_021 = Refl
+projection_surjective order_102 = Refl
+projection_surjective order_120 = Refl
+projection_surjective order_201 = Refl
+projection_surjective order_210 = Refl
+
+-- Exponent sum modulo THREE, a braid invariant which can distinguish a square
+-- from the identity. This finite invariant is intentionally not complete.
+public export
+choice winding_mod_three one_of
+  winding_zero
+  winding_one
+  winding_two
+
+public export
+positive_turn : winding_mod_three → winding_mod_three
+positive_turn winding_zero = winding_one
+positive_turn winding_one = winding_two
+positive_turn winding_two = winding_zero
+
+public export
+negative_turn : winding_mod_three → winding_mod_three
+negative_turn winding_zero = winding_two
+negative_turn winding_one = winding_zero
+negative_turn winding_two = winding_one
+
+public export
+winding_move : crossing → winding_mod_three → winding_mod_three
+winding_move over_first = positive_turn
+winding_move over_second = positive_turn
+winding_move under_first = negative_turn
+winding_move under_second = negative_turn
+
+public export
+winding_cancellation : (generator : crossing) → (before : winding_mod_three) →
+  winding_move (inverse_crossing generator) (winding_move generator before) = before
+winding_cancellation over_first winding_zero = Refl
+winding_cancellation over_first winding_one = Refl
+winding_cancellation over_first winding_two = Refl
+winding_cancellation under_first winding_zero = Refl
+winding_cancellation under_first winding_one = Refl
+winding_cancellation under_first winding_two = Refl
+winding_cancellation over_second winding_zero = Refl
+winding_cancellation over_second winding_one = Refl
+winding_cancellation over_second winding_two = Refl
+winding_cancellation under_second winding_zero = Refl
+winding_cancellation under_second winding_one = Refl
+winding_cancellation under_second winding_two = Refl
+
+public export
+winding_braid_relation : (before : winding_mod_three) →
+  winding_move over_first (winding_move over_second (winding_move over_first before)) =
+  winding_move over_second (winding_move over_first (winding_move over_second before))
+winding_braid_relation before = Refl
+
+public export
+winding_action : BraidAction winding_mod_three
+winding_action = ActsBy winding_move winding_cancellation winding_braid_relation
+
+public export
+winding : BraidWord → winding_mod_three
+winding word = run_word winding_action word winding_zero
+
+public export
+two_is_not_zero : winding_two = winding_zero → Void
+two_is_not_zero Refl impossible
+
+public export
+one_is_not_two : winding_one = winding_two → Void
+one_is_not_two Refl impossible
+
+public export
+square_keeps_endpoints : project_endpoints [over_first, over_first] = project_endpoints []
+square_keeps_endpoints = Refl
+
+public export
+square_is_not_identity : BraidEquivalent [over_first, over_first] [] → Void
+square_is_not_identity proof = two_is_not_zero (respects_braids winding_action proof winding_zero)
+
+public export
+over_is_not_under : BraidEquivalent [over_first] [under_first] → Void
+over_is_not_under proof = one_is_not_two (respects_braids winding_action proof winding_zero)
+
+public export
+endpoint_equality_cannot_reflect_braid_equality :
+  ((left, right : BraidWord) → project_endpoints left = project_endpoints right →
+    BraidEquivalent left right) → Void
+endpoint_equality_cannot_reflect_braid_equality reflect =
+  square_is_not_identity (reflect [over_first, over_first] [] Refl)

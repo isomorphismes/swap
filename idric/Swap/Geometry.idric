@@ -1,0 +1,105 @@
+module Swap.Geometry
+
+import Swap.Model
+
+-- The exact permutation remains above these approximate coordinates.
+-- The current numerical witness uses binary64; drawing converts to Float32.
+
+public export
+record Point3 where
+  constructor MkPoint3
+  x : Double
+  y : Double
+  z : Double
+
+public export
+unit_interval : Double → Double
+unit_interval t = max 0.0 (min 1.0 t)
+
+public export
+ease : Double → Double
+ease t =
+  let u = unit_interval t in
+    u × u × (3.0 - 2.0 × u)
+
+public export
+angle_pi : Double
+angle_pi = 3.14159265358979323846
+
+public export
+triangle_slot : slot → Point3
+triangle_slot first_slot = MkPoint3 0.0 1.0 0.0
+triangle_slot second_slot = MkPoint3 (-0.86602540378443864676) (-0.5) 0.0
+triangle_slot third_slot = MkPoint3 0.86602540378443864676 (-0.5) 0.0
+
+public export
+position_in_triangle : Ordering → identity → Point3
+position_in_triangle order piece = triangle_slot (slot_of order piece)
+
+public export
+dot_product : Point3 → Point3 → Double
+dot_product a b = x a × x b + y a × y b + z a × z b
+
+public export
+rotate_about : Point3 → Point3 → Double → Point3
+rotate_about point axis angle =
+  let c = cos angle
+      s = sin angle
+      d = dot_product point axis
+      x_value = x point × c + (y axis × z point - z axis × y point) × s
+                              + x axis × d × (1.0-c)
+      y_value = y point × c + (z axis × x point - x axis × z point) × s
+                              + y axis × d × (1.0-c)
+      z_value = z point × c + (x axis × y point - y axis × x point) × s
+                              + z axis × d × (1.0-c)
+   in MkPoint3 x_value y_value z_value
+
+public export
+triangle_during : Ordering → Crossing → Double → identity → Point3
+triangle_during ordering crossing phase piece =
+  let stationary = case adjacent crossing of
+                      first_pair => third_slot
+                      second_pair => first_slot
+      axis = triangle_slot stationary
+      signed_angle = case depth crossing of
+                       left_over => angle_pi × ease phase
+                       left_under => -angle_pi × ease phase
+   in rotate_about (position_in_triangle ordering piece) axis signed_angle
+
+public export
+slot_x : slot → Double
+slot_x first_slot = -1.0
+slot_x second_slot = 0.0
+slot_x third_slot = 1.0
+
+public export
+crossing_during : Ordering → Crossing → Double → identity → Point3
+crossing_during ordering crossing phase piece =
+  let s = slot_of ordering piece
+      t = unit_interval phase
+      travelled = ease t
+      bump = 0.30 × sin (angle_pi × t)
+      right_over = case depth crossing of
+                     left_over => False
+                     left_under => True
+      left_member = case (adjacent crossing, s) of
+                      (first_pair, first_slot) => True
+                      (second_pair, second_slot) => True
+                      _ => False
+      right_member = case (adjacent crossing, s) of
+                       (first_pair, second_slot) => True
+                       (second_pair, third_slot) => True
+                       _ => False
+      x_value = slot_x s + (if left_member then travelled else 0.0)
+                         - (if right_member then travelled else 0.0)
+      z_value = if left_member then (if right_over then -bump else bump)
+                else if right_member then (if right_over then bump else -bump)
+                else 0.0
+    in MkPoint3 x_value t z_value
+
+public export
+distance : Point3 → Point3 → Double
+distance a b =
+  sqrt ((x a-x b) × (x a-x b)
+      + (y a-y b) × (y a-y b)
+      + (z a-z b) × (z a-z b))

@@ -2,9 +2,8 @@ module Swap.Raw.Contact
 
 import public Swap.Raw.Native
 
--- Capture an identity in a particular painted frame. On release, revalidate
--- against the CURRENT painted frame, not the old slot or old model state.
-
+-- Capture an identity in a painted frame. A touch has its OWN event serial;
+-- the observed frame's input_serial names the earlier event that produced it.
 public export
 choice touch_phase one_of
   contact_began
@@ -15,6 +14,7 @@ public export
 record TouchEvent where
   constructor PointerEvent
   frame : FrameKey
+  event_serial : Number
   pointer_identity : Number
   phase : touch_phase
 
@@ -38,7 +38,17 @@ coherent_release press release =
   surface_epoch (frame press) ≟ surface_epoch (frame release) &&
   viewport_revision (frame press) ≟ viewport_revision (frame release) &&
   frame_revision (frame release) >= frame_revision (frame press) &&
-  input_serial (frame release) > input_serial (frame press)
+  event_serial release > event_serial press
+
+-- A result gets a NEW frame key, on the same surface/viewport, attributed to
+-- this release. The native sequencer must also reserve that key uniquely.
+public export
+valid_followup_frame : TouchEvent → FrameKey → Bool
+valid_followup_frame event output =
+  surface_epoch output ≟ surface_epoch (frame event) &&
+  viewport_revision output ≟ viewport_revision (frame event) &&
+  frame_revision output > frame_revision (frame event) &&
+  input_serial output ≟ event_serial event
 
 public export
 kind_code : target_kind → Number
@@ -116,7 +126,6 @@ finish_contact compare_action contact current_picture release_point release =
                     Yes same_operation =>
                       Right (ReleaseOnSameIdentity current coherent same_object same_kind same_operation)
 
--- The current state, not the press-time state, determines the transition.
 export
 respond_to_release : {canvas : Canvas} →
                      (behaviour : Behaviour model action canvas) → (current : model) →

@@ -1,30 +1,40 @@
 module Swap.Raw.Delivery
 
 import public Swap.Raw.Contact
+import public Swap.Raw.Guarantee
+import public Swap.Raw.Snapshot
 
--- Unlike the unrestricted reference classifier, the application-facing API
--- returns an opaque linear obligation. Its constructor is private to this
--- module. The caller cannot pattern-match it away to ignore a redraw.
+-- The application entry requires submitted source pictures, the global
+-- responsiveness law, and a fresh output key. It returns an opaque linear
+-- obligation belonging to the same native boundary. No exported destructor.
 export
-data ResponseDebt : FrameKey → (behaviour : Behaviour model action canvas) →
+data ResponseDebt : (boundary : NativeBoundary canvas action) →
+                    FrameKey → (behaviour : Behaviour model action canvas) →
                     (command : action) → (before : model) → Type where
-  ResultStillOwed : Response behaviour command before → ResponseDebt key behaviour command before
+  ResultStillOwed : Response behaviour command before → ResponseDebt boundary key behaviour command before
 
 export
 owe_released_response : {canvas : Canvas} →
-                        (behaviour : Behaviour model action canvas) → (current : model) →
-                        (point : PixelAddress canvas) →
-                        (event : TouchEvent) →
+                        {previous_picture : Picture canvas action} →
+                        {press_point : PixelAddress canvas} →
+                        {contact : Contact previous_picture press_point} →
+                        (boundary : NativeBoundary canvas action) →
+                        (behaviour : Behaviour model action canvas) →
+                        Responsive behaviour → (current : model) →
+                        (point : PixelAddress canvas) → (event : TouchEvent) →
+                        (0 press_snapshot : SubmittedSnapshot boundary (frame (press contact)) previous_picture) →
+                        (0 current_snapshot : SubmittedSnapshot boundary (frame event) (draw behaviour current)) →
                         (released : Released contact (draw behaviour current) point event) →
-                        L1 IO (ResponseDebt (frame event) behaviour
+                        (output : FrameKey) → valid_followup_frame event output = True →
+                        L1 IO (ResponseDebt boundary output behaviour
                           (operation (target (current_target released))) current)
-owe_released_response behaviour current point event released =
-  pure1 (ResultStillOwed (respond_to_release behaviour current point released))
+owe_released_response boundary behaviour responsive current point event
+                      press_snapshot current_snapshot released output linked =
+  pure1 (ResultStillOwed (respond_with_guarantee behaviour responsive
+    (operation (target (current_target released))) current))
 
--- A native failure returns the still-owned obligation, not success. A view
--- failure also keeps the window; no draw was attempted. Neither can retire an
--- action as visibly completed. The application must retry or explicitly record
--- interruption/failure. There is no exported 'discard debt' function.
+-- Native failure retains the obligation. The view failure is defensive for
+-- the common reference representation; the certified entry cannot produce it.
 public export
 data DeliveryResult : (boundary : NativeBoundary canvas action) →
                       FrameKey → (behaviour : Behaviour model action canvas) →
@@ -36,9 +46,9 @@ data DeliveryResult : (boundary : NativeBoundary canvas action) →
                       (draw behaviour (perform behaviour command before))) →
                     DeliveryResult boundary key behaviour command before
   NativeRetryRequired : native_failure →
-                        (1 debt : ResponseDebt key behaviour command before) →
+                        (1 debt : ResponseDebt boundary key behaviour command before) →
                         DeliveryResult boundary key behaviour command before
-  ViewContractFailed : (1 debt : ResponseDebt key behaviour command before) →
+  ViewContractFailed : (1 debt : ResponseDebt boundary key behaviour command before) →
                        (1 window : Window boundary (surface_epoch key)) →
                        DeliveryResult boundary key behaviour command before
 
@@ -47,7 +57,7 @@ deliver_response : {canvas : Canvas} →
                    (boundary : NativeBoundary canvas action) →
                    (key : FrameKey) → (behaviour : Behaviour model action canvas) →
                    (command : action) → (before : model) →
-                   (1 debt : ResponseDebt key behaviour command before) →
+                   (1 debt : ResponseDebt boundary key behaviour command before) →
                    (1 window : Window boundary (surface_epoch key)) →
                    L1 IO (DeliveryResult boundary key behaviour command before)
 deliver_response boundary key behaviour command before (ResultStillOwed response) window =
@@ -62,7 +72,7 @@ deliver_response boundary key behaviour command before (ResultStillOwed response
         NativeFailed reason =>
           pure1 (NativeRetryRequired reason (ResultStillOwed (NeedsDrawing changed witness)))
 
--- Event uniqueness still belongs to the trusted driver: it must issue each
--- decoded release once and enforce monotone input/frame serials. Linear source
--- obligations do not make replayed foreign events fresh. Keep one debt per
--- accepted event; do not replace a queue with its final endpoint permutation.
+-- The native sequencer still validates actual frame/event freshness and reserves
+-- output IDs uniquely. A reusable submitted fact is not proof that its frame is
+-- currently on the physical panel. Queue one debt per accepted action; do not
+-- replace rapid operations with their final endpoint permutation.

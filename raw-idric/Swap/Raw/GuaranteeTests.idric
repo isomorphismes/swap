@@ -1,0 +1,60 @@
+module Swap.Raw.GuaranteeTests
+
+import Swap.Raw.Guarantee
+import Swap.Raw.Examples
+import System
+
+-- Exhaustive proof for every action and every state of the pair fixture.
+-- Fixed inputs eliminate the impossible 'changed' assumption; all other
+-- cases give the exact changed result pixel.
+pair_witness : (command : operation_name) → (before : Bool) →
+               Not (perform pair_behaviour command before = before) →
+               VisibleChange pair_behaviour command before
+pair_witness exchange_pair False changed = ChangedResultPixel result_pixel Refl Refl
+pair_witness exchange_pair True changed = ChangedResultPixel result_pixel Refl Refl
+pair_witness put_in_initial_order False changed = void (changed Refl)
+pair_witness put_in_initial_order True changed = ChangedResultPixel result_pixel Refl Refl
+pair_witness normalize_sign False changed = void (changed Refl)
+pair_witness normalize_sign True changed = ChangedResultPixel result_pixel Refl Refl
+
+public export
+responsive_pair : Responsive pair_behaviour
+responsive_pair = EveryChangeIsVisible pair_witness
+
+formula_witness : (command : operation_name) → (before : Bool) →
+                  Not (perform formula_behaviour command before = before) →
+                  VisibleChange formula_behaviour command before
+formula_witness exchange_pair False changed = ChangedResultPixel result_pixel Refl Refl
+formula_witness exchange_pair True changed = ChangedResultPixel result_pixel Refl Refl
+formula_witness put_in_initial_order False changed = void (changed Refl)
+formula_witness put_in_initial_order True changed = ChangedResultPixel result_pixel Refl Refl
+formula_witness normalize_sign False changed = void (changed Refl)
+formula_witness normalize_sign True changed = ChangedResultPixel result_pixel Refl Refl
+
+public export
+responsive_formula : Responsive formula_behaviour
+responsive_formula = EveryChangeIsVisible formula_witness
+
+-- A constant result-only view cannot meet the law by reusing the good view's
+-- certificate. Its rendering function is part of the certificate's type.
+failing
+  certify_invisible_formula : Responsive broken_formula_behaviour
+  certify_invisible_formula = responsive_formula
+
+is_visible : Response behaviour command before → Bool
+is_visible (NeedsDrawing _ _) = True
+is_visible _ = False
+
+assert_guarantee : Text → Bool → IO ()
+assert_guarantee name True = putStrLn ("PASS " ++ name)
+assert_guarantee name False = do
+  putStrLn ("FAIL " ++ name)
+  exitFailure
+
+export
+run_guarantee_tests : IO ()
+run_guarantee_tests = do
+  assert_guarantee "certified pair action has a visible result without raster search"
+    (is_visible (respond_with_guarantee pair_behaviour responsive_pair exchange_pair False))
+  assert_guarantee "certified formula action has a visible result without raster search"
+    (is_visible (respond_with_guarantee formula_behaviour responsive_formula normalize_sign True))

@@ -1,35 +1,42 @@
 # Swap — raw Idriç branch
 
-This branch develops the relationship between touching a painted object,
-applying its operation, and displaying the result. The active source is
-[`raw-idric/`](raw-idric/README.md), not the earlier C/Sokol prototype.
+The active source is [`raw-idric/`](raw-idric/README.md), not the earlier
+C/Sokol prototype. This branch connects the painted object you touch to its
+operation and to the exact result that must be drawn through a direct
+Android NDK/EGL/GLES boundary.
 
-The central contract is stronger than a named gesture or a redraw request:
-if the operation changes the current state, the resulting picture must have
-an actual changed pixel in the operation's result region. The proof is indexed
-by the operation and before-state. A fixed-point proof justifies a semantic
-no-change result; an invisible state transition is refused, not called success.
+## Central relationships
 
-The direct Android boundary is NDK input / NativeActivity / EGL / GLES.
-The new package neither imports Sokol nor copies its application logic into C.
-The former native workflow is removed on this branch so it cannot build a
-Sokol APK and label that as raw Idriç acceptance.
+The application entry requires [`Responsive behaviour`](raw-idric/responsiveness-law.md):
+a total witness that every action which changes its current state also changes
+an actual pixel in the action's meaningful result region. The witness is bound
+to `draw (perform command before)`, not an arbitrary replacement picture.
+A fixed-point proof permits no semantic change.
 
-## Source and status
+[Submitted source snapshots](raw-idric/native-frame-link.md) tie press/release
+pictures to native frame receipts. A release's own event serial is distinct
+from the input that produced its observed frame. Its response needs a newer
+frame key attributed to that release.
 
-- [Screen and response types](raw-idric/README.md): coupled paint/picking,
-  operation semantics, result-region and changed-pixel proofs.
-- [Native boundary](raw-idric/Swap/Raw/Native.idric): surface/frame/input indices,
-  linear resources, verified pixels and distinct buffer-submission results.
-- [Tests](raw-idric/Swap/Raw/Tests.idric): small exact reference-raster cases and
-  compiler-rejected negative programs. The pinned compiler must actually run
-  before any typecheck result is claimed.
+The application-facing response is an opaque linear obligation. It must be
+submitted as that exact result, justified as a fixed point, or retained on
+failure. It cannot be unwrapped merely to discard a redraw request.
 
-A concrete Idriç-to-NDK graphics implementation and full Swap UI are not yet
-provided by this branch. No APK or physical-device result is claimed.
+[Detailed contracts](raw-idric/contracts.md) state coordinate, capture, action,
+queue, animation, native readback/submission, lifecycle and progress obligations.
+Positive reference-raster cases and negative compiler cases accompany the code.
 
-The inherited `src/`, `idric/`, `android/`, and legacy build scripts remain
-available for comparison. They are earlier prototypes, not alternate raw build
-routes. The other branches and the previously installed Swap are unchanged.
-The Rough.js and Field Mouse material under `reference-code/` remains reference
-material, not a dependency of this work.
+## Evidence and boundaries
+
+The exact `.idric` source must pass the pinned compiler and executable tests
+before qualification is claimed. A concrete native driver, full Swap UI,
+GPU execution, new APK and physical-screen behavior are not provided by this
+contract branch. A typed submission receipt is not proof of physical scanout
+or of a human-perceptible change.
+
+No Sokol, SDL, raylib or JavaScript renderer is imported by the raw package.
+The former Sokol native workflow is removed only on this branch so it cannot
+produce an APK mistaken for raw Idriç acceptance. The inherited `src/`,
+`idric/`, `android/` and legacy scripts remain for comparison, not as alternative
+raw build routes. Other branches and the installed Swap are unchanged.
+Rough.js and Field Mouse under `reference-code/` remain reference material.

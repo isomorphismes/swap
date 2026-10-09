@@ -1,0 +1,13 @@
+module Swap.Raw.Snapshot
+
+import public Swap.Raw.Native
+
+-- A reusable fact that an EXACT picture/key was submitted by THIS boundary.
+-- Its constructor requires the boundary's receipt, not an input-finished flag.
+-- The receipt is erased here so the live resource can still be consumed once
+-- by reuse_window. This fact proves submission, not current physical scanout.
+public export
+data SubmittedSnapshot : (boundary : NativeBoundary canvas action) →
+                         FrameKey → Picture canvas action → Type where
+  SnapshotFromSubmission : (0 receipt : Submitted boundary key picture) →
+                           SubmittedSnapshot boundary key picture

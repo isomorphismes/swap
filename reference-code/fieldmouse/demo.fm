@@ -1,0 +1,57 @@
+// Illustrates the translated generator; not a separate SVG reimplementation.
+// Run: bash reference-code/fieldmouse/run.sh [output.svg]
+
+var shapes ← [];
+
+var red ← roughOptions(11);
+red.stroke ← "#db4666";
+red.strokeWidth ← 3;
+red.roughness ← 0.7;
+roughPush(shapes, roughCurve([
+  [84, 20], [125, 75], [84, 125], [125, 180],
+  [84, 235], [125, 290], [84, 345]
+], red));
+
+var blue ← roughOptions(12);
+blue.stroke ← "#388bdd";
+blue.strokeWidth ← 3;
+blue.roughness ← 0.7;
+roughPush(shapes, roughCurve([
+  [125, 20], [84, 75], [125, 125], [84, 180],
+  [125, 235], [84, 290], [125, 345]
+], blue));
+
+var gold ← roughOptions(13);
+gold.stroke ← "#d49a32";
+gold.strokeWidth ← 3;
+gold.roughness ← 0.7;
+roughPush(shapes, roughCurve([
+  [104, 20], [104, 75], [104, 125], [104, 180],
+  [104, 235], [104, 290], [104, 345]
+], gold));
+
+var triRed ← roughOptions(21);
+triRed.stroke ← "#db4666";
+triRed.strokeWidth ← 3;
+var triBlue ← roughOptions(22);
+triBlue.stroke ← "#388bdd";
+triBlue.strokeWidth ← 3;
+var triGold ← roughOptions(23);
+triGold.stroke ← "#d49a32";
+triGold.strokeWidth ← 3;
+
+roughPush(shapes, roughLine(43, 450, 166, 450, triRed));
+roughPush(shapes, roughLine(166, 450, 104, 351, triBlue));
+roughPush(shapes, roughLine(104, 351, 43, 450, triGold));
+
+var circleOptions ← roughOptions(24);
+circleOptions.stroke ← "#808080";
+roughPush(shapes, roughCircle(105, 445, 160, circleOptions));
+
+var args ← arguments();
+var target ← "swap-rough.svg";
+if (args.length > 0) {
+  target ← args[0];
+}
+writeText(target, roughSvgDocument(shapes, 210, 540));
+console.log("generated " + target);

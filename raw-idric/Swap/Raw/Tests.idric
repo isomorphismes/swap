@@ -26,29 +26,40 @@ has_target : Maybe (Hit picture point) → Bool
 has_target (Just _) = True
 has_target Nothing = False
 
--- Compile-time witnesses bind the operation, state, result region and colour
--- change. These reduce to raster changes, not metadata changes.
-pair_changes : VisibleChange pair_behaviour exchange_pair False
-pair_changes = ChangedResultPixel result_pixel Refl Refl
+pair_changes : VisibleChange aggregate_pair exchange_pair False
+pair_changes = ChangedResultRegion Refl
 
-formula_changes : VisibleChange formula_behaviour normalize_sign True
-formula_changes = ChangedResultPixel result_pixel Refl Refl
+formula_changes : VisibleChange aggregate_formula normalize_sign True
+formula_changes = ChangedResultRegion Refl
 
--- Negative programs are checked by the compiler's failing declaration.
+-- A Boolean proof about actual aggregate measurements is required. Neither a
+-- singleton witness nor manufactured caller-side counters are accepted.
 failing
-  unchanged_pixels_are_success : VisibleChange broken_formula_behaviour normalize_sign True
-  unchanged_pixels_are_success = ChangedResultPixel result_pixel Refl Refl
-
-failing
-  control_flash_counts_as_result : VisibleChange pair_behaviour exchange_pair False
-  control_flash_counts_as_result = ChangedResultPixel control_pixel Refl Refl
+  single_bright_pixel_is_success : VisibleChange single_pixel_behaviour exchange_pair False
+  single_bright_pixel_is_success = ChangedResultRegion Refl
 
 failing
-  wrong_state_is_a_fixed_point : Response pair_behaviour exchange_pair False
+  tiny_region_is_success : VisibleChange shrunk_region_behaviour exchange_pair False
+  tiny_region_is_success = ChangedResultRegion Refl
+
+failing
+  control_flash_counts_as_result : VisibleChange control_flash_behaviour exchange_pair False
+  control_flash_counts_as_result = ChangedResultRegion Refl
+
+failing
+  stale_pixels_are_success : VisibleChange stale_result_behaviour exchange_pair False
+  stale_pixels_are_success = ChangedResultRegion Refl
+
+failing
+  old_one_pixel_contract_is_success : VisibleChange pair_behaviour exchange_pair False
+  old_one_pixel_contract_is_success = ChangedResultRegion Refl
+
+failing
+  wrong_state_is_a_fixed_point : Response aggregate_pair exchange_pair False
   wrong_state_is_a_fixed_point = AtFixedPoint Refl
 
 failing
-  empty_pixel_is_button : Hit (pair_picture False) result_pixel
+  empty_pixel_is_button : Hit (aggregate_pair_picture False) aggregate_result
   empty_pixel_is_button = HitPaintedTarget pair_button Refl
 
 failing
@@ -62,25 +73,53 @@ failing
 export
 main : IO ()
 main = do
-  case pick_painted_target (draw pair_behaviour False) control_pixel of
+  case pick_painted_target (draw aggregate_pair False) aggregate_control of
     Nothing => assert_test "painted button was picked" False
-    Just hit => assert_test "touch -> correct action -> changed result pixel"
-      (is_visible (respond_to_touch pair_behaviour False control_pixel hit))
+    Just hit => assert_test "touch -> intended operation -> aggregate result"
+      (is_visible (respond_to_touch aggregate_pair False aggregate_control hit))
+  let measured = result_metrics aggregate_pair exchange_pair False
+  assert_test "positive result counts 64 distinct addresses, not repeats"
+    (region_pixels measured ≟ 64 && changed_pixels measured ≟ 64 &&
+     absolute_channel_difference measured ≟ 24832)
+  let singleton = result_metrics single_pixel_behaviour exchange_pair False
+  assert_test "one bright changed pixel is insufficient"
+    (region_pixels singleton ≟ 64 && changed_pixels singleton ≟ 1 &&
+     is_refused (respond_to_action single_pixel_behaviour exchange_pair False))
+  assert_test "shrinking the denominator to one pixel is insufficient"
+    (is_refused (respond_to_action shrunk_region_behaviour exchange_pair False))
+  assert_test "a control flash does not replace the operation's result"
+    (is_refused (respond_to_action control_flash_behaviour exchange_pair False))
+  assert_test "changed model plus stale result drawing is rejected"
+    (is_refused (respond_to_action stale_result_behaviour exchange_pair False))
+  assert_test "the former one-pixel example is now a negative fixture"
+    (is_refused (respond_to_action pair_behaviour exchange_pair False))
   assert_test "exchange changes both starting states"
-    (is_visible (respond_to_action pair_behaviour exchange_pair False) &&
-     is_visible (respond_to_action pair_behaviour exchange_pair True))
+    (is_visible (respond_to_action aggregate_pair exchange_pair False) &&
+     is_visible (respond_to_action aggregate_pair exchange_pair True))
   assert_test "idempotent reset still changes its first nonfixed input"
-    (is_visible (respond_to_action pair_behaviour put_in_initial_order True))
+    (is_visible (respond_to_action aggregate_pair put_in_initial_order True))
   assert_test "reset at its fixed point need not change the picture"
-    (is_fixed (respond_to_action pair_behaviour put_in_initial_order False))
-  case pick_painted_target (draw formula_behaviour True) control_pixel of
+    (is_fixed (respond_to_action aggregate_pair put_in_initial_order False))
+  case pick_painted_target (draw aggregate_formula True) aggregate_control of
     Nothing => assert_test "painted formula was picked" False
-    Just hit => assert_test "formula touch changes the displayed input"
-      (is_visible (respond_to_touch formula_behaviour True control_pixel hit))
+    Just hit => assert_test "formula touch produces aggregate feedback"
+      (is_visible (respond_to_touch aggregate_formula True aggregate_control hit))
   assert_test "equal formula outputs cannot hide a changed input"
     (is_refused (respond_to_action broken_formula_behaviour normalize_sign True))
+
+  -- Predicate unit tests, NOT extra framebuffer or device evidence.
+  let policy = AggregatePolicy 64 16 1 5 1
+  assert_test "widespread one-channel one-unit noise fails contrast budget"
+    (not (passes_aggregate_policy policy (MeasuredRegion 64 64 64)))
+  assert_test "mean channel difference exactly one is insufficient"
+    (not (passes_aggregate_policy policy (MeasuredRegion 64 64 192)))
+  assert_test "coverage exactly one fifth is insufficient"
+    (not (passes_aggregate_policy policy (MeasuredRegion 100 20 6000)))
+  assert_test "zero denominator and vacuous thresholds are rejected"
+    (not (passes_aggregate_policy (AggregatePolicy 0 0 0 0 0) measured))
+
   assert_test "noninteractive result is not a button"
-    (not (has_target (pick_painted_target (pair_picture False) result_pixel)))
+    (not (has_target (pick_painted_target (aggregate_pair_picture False) aggregate_result)))
   case pixel_at moving_canvas 133 0 of
     Nothing => assert_test "moving point lies on canvas" False
     Just point => assert_test "pick follows the moving dot at 133"
@@ -92,7 +131,7 @@ main = do
   assert_test "outside canvas cannot become a typed pixel"
     (case pixel_at two_pixels 2 0 of Nothing => True; Just _ => False)
   let occluded = \point => paint_over (Just (PaintSample background_ink Nothing))
-                                     (pair_picture False point)
+                                     (aggregate_pair_picture False point)
   assert_test "opaque overlay blocks the covered button"
-    (not (has_target (pick_painted_target occluded control_pixel)))
-  putStrLn "Raw Idric: reference raster/response tests only; no GPU, NDK or physical display claim"
+    (not (has_target (pick_painted_target occluded aggregate_control)))
+  putStrLn "Raw Idric: aggregate reference tests only; no GPU, NDK or human-perception claim"

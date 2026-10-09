@@ -4,42 +4,43 @@ import Swap.Raw.Guarantee
 import Swap.Raw.Examples
 import System
 
--- Exhaustive proof for every action and every state of the pair fixture.
--- Fixed inputs eliminate the impossible 'changed' assumption; all other
--- cases give the exact changed result pixel.
+-- Exhaustive aggregate certificates for every action and both model states.
+-- Each positive Refl reduces the WHOLE 64-address result comparison.
 pair_witness : (command : operation_name) → (before : Bool) →
-               Not (perform pair_behaviour command before = before) →
-               VisibleChange pair_behaviour command before
-pair_witness exchange_pair False changed = ChangedResultPixel result_pixel Refl Refl
-pair_witness exchange_pair True changed = ChangedResultPixel result_pixel Refl Refl
+               Not (perform aggregate_pair command before = before) →
+               VisibleChange aggregate_pair command before
+pair_witness exchange_pair False changed = ChangedResultRegion Refl
+pair_witness exchange_pair True changed = ChangedResultRegion Refl
 pair_witness put_in_initial_order False changed = void (changed Refl)
-pair_witness put_in_initial_order True changed = ChangedResultPixel result_pixel Refl Refl
+pair_witness put_in_initial_order True changed = ChangedResultRegion Refl
 pair_witness normalize_sign False changed = void (changed Refl)
-pair_witness normalize_sign True changed = ChangedResultPixel result_pixel Refl Refl
+pair_witness normalize_sign True changed = ChangedResultRegion Refl
 
 public export
-responsive_pair : Responsive pair_behaviour
+responsive_pair : Responsive aggregate_pair
 responsive_pair = EveryChangeIsVisible pair_witness
 
 formula_witness : (command : operation_name) → (before : Bool) →
-                  Not (perform formula_behaviour command before = before) →
-                  VisibleChange formula_behaviour command before
-formula_witness exchange_pair False changed = ChangedResultPixel result_pixel Refl Refl
-formula_witness exchange_pair True changed = ChangedResultPixel result_pixel Refl Refl
+                  Not (perform aggregate_formula command before = before) →
+                  VisibleChange aggregate_formula command before
+formula_witness exchange_pair False changed = ChangedResultRegion Refl
+formula_witness exchange_pair True changed = ChangedResultRegion Refl
 formula_witness put_in_initial_order False changed = void (changed Refl)
-formula_witness put_in_initial_order True changed = ChangedResultPixel result_pixel Refl Refl
+formula_witness put_in_initial_order True changed = ChangedResultRegion Refl
 formula_witness normalize_sign False changed = void (changed Refl)
-formula_witness normalize_sign True changed = ChangedResultPixel result_pixel Refl Refl
+formula_witness normalize_sign True changed = ChangedResultRegion Refl
 
 public export
-responsive_formula : Responsive formula_behaviour
+responsive_formula : Responsive aggregate_formula
 responsive_formula = EveryChangeIsVisible formula_witness
 
--- A constant result-only view cannot meet the law by reusing the good view's
--- certificate. Its rendering function is part of the certificate's type.
 failing
-  certify_invisible_formula : Responsive broken_formula_behaviour
-  certify_invisible_formula = responsive_formula
+  certify_single_pixel_with_region_proof : Responsive single_pixel_behaviour
+  certify_single_pixel_with_region_proof = responsive_pair
+
+failing
+  certify_stale_formula_with_good_proof : Responsive stale_result_behaviour
+  certify_stale_formula_with_good_proof = responsive_formula
 
 is_visible : Response behaviour command before → Bool
 is_visible (NeedsDrawing _ _) = True
@@ -54,7 +55,7 @@ assert_guarantee name False = do
 export
 run_guarantee_tests : IO ()
 run_guarantee_tests = do
-  assert_guarantee "certified pair action has a visible result without raster search"
-    (is_visible (respond_with_guarantee pair_behaviour responsive_pair exchange_pair False))
-  assert_guarantee "certified formula action has a visible result without raster search"
-    (is_visible (respond_with_guarantee formula_behaviour responsive_formula normalize_sign True))
+  assert_guarantee "certified pair action supplies a whole-region certificate"
+    (is_visible (respond_with_guarantee aggregate_pair responsive_pair exchange_pair False))
+  assert_guarantee "certified formula action supplies a whole-region certificate"
+    (is_visible (respond_with_guarantee aggregate_formula responsive_formula normalize_sign True))

@@ -1,72 +1,73 @@
-# Raw Idriç: touch must have its specified visible result
+# Raw Idriç: touch must have its specified aggregate visible result
 
-Active experiment on branch `raw-idric`. No Sokol, SDL, raylib, JavaScript
-renderer, or C copy of application semantics is used by this package.
-Inherited `src/` and `idric/` are earlier prototypes, not the raw implementation.
-Their APK builds cannot qualify this package.
+Active experiment on branch `raw-idric`. This package uses no Sokol, SDL,
+raylib, JavaScript renderer, or C copy of application semantics. Inherited
+`src/` and `idric/` are earlier prototypes, not this implementation.
 
     pick the identity in the composed picture
     revalidate the captured pointer/identity on release
     apply its operation to the current state
-    require a changed result pixel unless this state is already fixed
-    retain a linear response obligation
-    rasterize, verify, and submit that exact result through the NDK contract
+    require aggregate change in the meaningful result region unless f(s)=s
+    retain the linear response obligation
+    rasterize, verify and submit that exact result through the NDK contract
 
-## The condition
+## Aggregate means area AND amount of change
 
-For operation f and state s, no semantic change is needed when f(s)=s. This is
-not the same as saying f is globally idempotent. Reset may change its first
-input but fix its own result.
+The earlier existential changed-pixel contract was wrong. It has been replaced,
+not supplemented. `VisibleChange behaviour command before` now contains a proof
+that the computed aggregate for the WHOLE declared result region passes the
+operation's visibility policy. It contains no chosen changed-pixel witness.
 
-For a changed state, `VisibleChange behaviour command before` requires a
-bounded pixel in the operation's result region whose final opaque colour
-differs between `draw before` and `draw (perform command before)`. A new revision,
-callback name, object address, or control-only flash is not enough.
+The measurements are the region's actual address count, its changed-address
+count, and the sum of absolute RGB channel differences between `draw before`
+and `draw (perform command before)`. All addresses are enumerated once;
+callers cannot supply duplicate samples, a selected changed subset, invented
+counters, or another next picture. The policy requires minimum region size,
+minimum changed area, fractional coverage AND mean colour difference.
 
-The reference classifier returns `AtFixedPoint`, `NeedsDrawing`, or
-`UnobservableChange`. The last is a view-contract failure, not successful action
-completion. For example, x=-1 -> x=1 is invisible in a display of x² alone;
-showing the changed input or transformation can repair that interpretation.
+[Source anchors, equations, budgets and limitations](aggregate-response.md)
+record the Fourier-sound tests this restores. The 64-address/16-changed-address
+budgets in the small reference fixtures are NOT calibrated phone thresholds.
+The Fourier-derived >20% and mean RGB8 difference >1 are regression criteria,
+not a theorem about perception or universal thresholds for every widget.
+
+For f(s)=s, equality evidence permits no state redraw. Reset can still change
+its first input. `UnobservableChange` means the visual contract failed, not that
+the action succeeded. A counter or control-only flash outside the meaningful
+result region cannot pay the response obligation. An x²-only view still cannot
+explain x=-1 changing to x=1.
 
 ## Source
 
-- `Screen.idric`: bounded pixels, coupled paint/picking after composition,
-  occlusion, and a hit proof for the exact painted pixel.
-- `Contact.idric`: pointer/surface/viewport/frame validation, current-geometry
-  identity revalidation, explicit cancellation, and release-to-current-state
-  binding. Implemented activation is clicking, not the full braid drag policy.
-- `Response.idric`: exact action/state/result-region/changed-pixel relationships.
-- `Delivery.idric`: an opaque linear response debt. A failed native attempt
-  returns the still-owned debt; a view failure retains both debt and window.
-  Consumers cannot unwrap this obligation merely to drop the redraw.
-- `Native.idric`: direct NDK/EGL/GLES implementer contract with linear resources
-  and distinct rasterized, verified and submitted stages. Its orchestration
-  function submits the exact result picture, not an arbitrary drawing.
-- `Examples.idric`, `Tests.idric`, `ContactTests.idric`, `Run.idric`: exact small
-  reference rasters, positive scenarios and compiler-rejected negative cases.
-
-[Detailed contracts and remaining native obligations](contracts.md) describe
-coordinate normalization, per-event delivery, rapid input, animation, foreign
-returns, readback, buffer submission, lifecycle and progress.
+- `Screen.idric` couples paint and picking after clipping/composition/occlusion.
+  Picking an individual address is appropriate for targeting, NOT for visual
+  response certification.
+- `Contact.idric` validates pointer/surface/viewport/frame and current identity.
+- `Response.idric` computes whole-region metrics and checks the policy, indexed
+  by exact operation/state/result drawing. No existential pixel escape hatch.
+- `Guarantee.idric` requires the all-actions responsiveness law using that
+  aggregate certificate. Native response debt therefore carries the stronger
+  requirement without replacing its identity/frame/lifetime constraints.
+- `Delivery.idric`, `Native.idric`, and `Snapshot.idric` retain exact-picture
+  source/output receipts and linear rasterized/verified/submitted resources.
+- `Examples.idric`, `Tests.idric`, `GuaranteeTests.idric`, `ContactTests.idric`
+  retain positive/negative fixtures. The former one-pixel positive examples
+  are now negative response fixtures (still useful for pointer-only tests).
 
 ## Qualification
 
-CI boots `isomorphisms/Idric@94dfd99bd3e376507fedc8611053b7173b2519f0` and checks
-the actual `.idric` files. It does not translate them to C, stock Idris or RefC.
-The compiler checkout's linear-IO library is the explicit inherited effect
-boundary. Indexed `data` declarations are necessary because its pinned
-`choice ... one_of` grammar supports unindexed alternatives only.
+CI uses `isomorphisms/Idric@94dfd99bd3e376507fedc8611053b7173b2519f0`, not a C
+translation, stock Idris or RefC. Report its actual result. Source presence
+is not successful typechecking. The aggregate revision has no locally available
+Idriç compiler; its new positive proofs and failing cases await that CI run.
 
 No concrete NDK driver, native Idriç lowering, full Swap scene, GPU execution,
-new APK or physical-screen result is supplied by these contracts. Their typecheck
-and test result must be reported from the actual CI outcome, not inferred from
-source presence.
+new APK or physical-screen result is supplied. Device-sized meaningful regions,
+perceptible aggregate budgets, duration and latency require device evidence.
+Submission is not physical scanout. Types cannot force OS scheduling or prove
+that a human noticed the result. These are unfinished acceptance obligations,
+NOT permission to weaken aggregate response back to a pixel difference.
 
-A pixel difference does not prove human perceptibility; meaningful area,
-contrast and duration remain acceptance requirements. The result-region
-specification must itself be reviewed. Types cannot infer the intended picture.
-
-`AInputQueue_finishEvent` acknowledges input processing, not display delivery.
-`eglSwapBuffers` success is submission, not physical scanout. Linear types do
-not force the OS to schedule a frame or establish a latency bound. Those facts
-remain explicit rather than being fabricated as dependent proofs.
+`aggregate-response.md` supersedes the changed-pixel descriptions in the earlier
+`contracts.md` and `responsiveness-law.md`; their other identity/lifetime/native
+requirements remain. Full animation traces and braid dragging remain separate.

@@ -40,6 +40,31 @@ jobs:
       - name: Shell syntax
         run: |
           for script in scripts/*.sh; do bash -n "$script"; done
+  idric-semantics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      # Independent checked-language lane. It does not certify Android Idriç
+      # machine code; the APK still uses the native C input/model adapter.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: isomorphisms/Idric
+          ref: 94dfd99bd3e376507fedc8611053b7173b2519f0
+          path: .idric-compiler
+          persist-credentials: false
+      - name: Bootstrap exact Idriç compiler
+        run: |
+          cd .idric-compiler
+          ./edric bootstrap
+      - name: Typecheck and run Swap's Idriç semantic/touch tests
+        run: |
+          cd idric
+          ../.idric-compiler/_/build/exec/idris2 --build swap.ipkg
+          ./build/exec/swap-idric-tests
   android-native:
     runs-on: ubuntu-24.04
     timeout-minutes: 90

@@ -55,3 +55,15 @@ ctest --test-dir build/host --output-on-failure
 The maintained workflow obtains that compiler through the existing shared
 `ai-ci/ick-host` action. It separately builds ARM32 and ARM64 Android libraries.
 A host geometry result is not a GPU, APK or physical-device result.
+
+## Rough.js reference and Field Mouse port
+
+The early drawing research keeps an independent
+[Rough.js browser demonstration](reference-code/roughjs/browser-demo.html)
+and a [native Field Mouse translation of the Rough.js generator](reference-code/fieldmouse/README.md).
+The translation includes seeded rough strokes, curves, polygons, rectangles,
+circles/ellipses, SVG serialization, a launcher using the actual
+`dilapidated-shed/fieldmouse` interpreter, and differential reference tests.
+
+These are reference implementations, **not** a commitment to using Rough.js
+or the Field Mouse port as Swap's production Android renderer.

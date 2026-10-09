@@ -1,0 +1,9 @@
+// Differential fixture. Run via ./run.sh --parity /tmp/rough-ops.json
+var argv ← arguments();
+if (argv.length < 1) {
+  console.log("parity.fm needs an output JSON filename");
+  exit(64);
+}
+var options ← roughOptions(17);
+var drawable ← roughLine(10, 20, 100, 180, options);
+writeText(argv[0], stringifyJson(drawable.sets[0].ops));

@@ -26,7 +26,7 @@ record CanvasMapping where
   offset_y : Double
 
 public export
-choice Control one_of
+choice control one_of
   left_over_button
   right_over_button
   left_under_button
@@ -46,14 +46,14 @@ record Rectangle where
   height : Double
 
 public export
-choice Contact one_of
+choice contact one_of
   no_contact
-  pressed_button Control
+  pressed_button control
   grabbed_strand slot
 
 public export
-choice AcceptedGesture one_of
-  selected_control Control
+choice accepted_gesture one_of
+  selected_control control
   completed_crossing Crossing
 
 public export
@@ -71,7 +71,7 @@ on_canvas mapping point =
                 ((screen_y point-offset_y mapping) ÷ scale mapping)
 
 public export
-control_bounds : Control → Rectangle
+control_bounds : control → Rectangle
 control_bounds left_over_button = MkRectangle 14.0 554.0 160.0 38.0
 control_bounds right_over_button = MkRectangle 186.0 554.0 160.0 38.0
 control_bounds left_under_button = MkRectangle 14.0 598.0 160.0 38.0
@@ -83,7 +83,7 @@ control_bounds drag_over_button = MkRectangle 14.0 510.0 160.0 38.0
 control_bounds drag_under_button = MkRectangle 186.0 510.0 160.0 38.0
 
 public export
-all_controls : List Control
+all_controls : List control
 all_controls = [left_over_button, right_over_button,
                 left_under_button, right_under_button,
                 reset_button, replay_button, pause_button,
@@ -96,7 +96,7 @@ inside p box =
   canvas_y p >= top box && canvas_y p <= top box + height box
 
 public export
-find_control : CanvasPoint → List Control → Maybe Control
+find_control : CanvasPoint → List control → Maybe control
 find_control point [] = Nothing
 find_control point (button :: rest) =
   if inside point (control_bounds button)
@@ -104,7 +104,7 @@ find_control point (button :: rest) =
     else find_control point rest
 
 public export
-hit_control : CanvasPoint → Maybe Control
+hit_control : CanvasPoint → Maybe control
 hit_control point = find_control point all_controls
 
 public export
@@ -145,7 +145,7 @@ drag_move third_slot release dragged_over =
   else Nothing
 
 public export
-begin_contact : CanvasPoint → Double → Contact
+begin_contact : CanvasPoint → Double → contact
 begin_contact point head_row =
   case hit_control point of
     Just button => pressed_button button
@@ -155,7 +155,7 @@ begin_contact point head_row =
         Nothing => no_contact
 
 public export
-finish_contact : Contact → CanvasPoint → Bool → Maybe AcceptedGesture
+finish_contact : contact → CanvasPoint → Bool → Maybe accepted_gesture
 finish_contact no_contact _ _ = Nothing
 finish_contact (pressed_button button) release _ =
   if inside release (control_bounds button)
@@ -167,7 +167,7 @@ finish_contact (grabbed_strand slot) release dragged_over =
     Nothing => Nothing
 
 public export
-control_crossing : Control → Maybe Crossing
+control_crossing : control → Maybe Crossing
 control_crossing left_over_button = Just (MkCrossing first_pair left_over)
 control_crossing right_over_button = Just (MkCrossing second_pair left_over)
 control_crossing left_under_button = Just (MkCrossing first_pair left_under)

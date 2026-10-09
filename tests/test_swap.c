@@ -103,16 +103,15 @@ static void lifecycle_and_limits(void) {
     CHECK(memcmp(&scene,&saved,sizeof(scene))==0);
     CHECK(swap_append(&scene,(SwapMove){0,0})==SWAP_INVALID_MOVE);
     CHECK(swap_append(&scene,(SwapMove){0,1})==SWAP_ACCEPTED);
-    saved=scene;
-    CHECK(swap_append(&scene,(SwapMove){1,1})==SWAP_BUSY);
-    CHECK(memcmp(&scene,&saved,sizeof(scene))==0);
+    CHECK(swap_append(&scene,(SwapMove){1,1})==SWAP_ACCEPTED);
+    CHECK(scene.count==2 && scene.cursor==0.0); /* queued, not discarded */
     swap_tick(&scene,NAN); swap_tick(&scene,INFINITY); swap_tick(&scene,-1);
     near(scene.cursor,0.0);
     scene.paused=true; swap_tick(&scene,100); near(scene.cursor,0.0);
     scene.paused=false;
     for(unsigned i=0;i<48;++i) swap_tick(&scene,1.0÷60.0);
     near(scene.cursor,1.0); finish(&scene);
-    for(unsigned i=1;i<SWAP_MAX_MOVES;++i) add(&scene,i%2,(i%3)?1:-1);
+    for(unsigned i=2;i<SWAP_MAX_MOVES;++i) add(&scene,i%2,(i%3)?1:-1);
     saved=scene;
     CHECK(swap_append(&scene,(SwapMove){0,1})==SWAP_HISTORY_FULL);
     CHECK(memcmp(&scene,&saved,sizeof(scene))==0);

@@ -419,33 +419,14 @@ static void draw_sets(void) {
 /* A second, genuinely BELOW-the-fold section of the THREE canvas.
    Fixed canvas slots and six permanently coloured identities are distinct.
    These paths are display interpolations, not braid lifts. */
-static bool six_hit_rectangle(Point2 p,float x,float y,float w,float h) {
-    return isfinite(p.x) && isfinite(p.y) &&
-           p.x>=x && p.x<x+w && p.y>=y && p.y<y+h;
-}
 static bool six_open_at(Point2 p) {
-    return six_hit_rectangle(p,14,691,332,29);
+    return swap_six_box_contains(swap_six_open_box(),p.x,p.y);
 }
 static bool six_back_at(Point2 p) {
-    return six_hit_rectangle(p,14,736,332,46);
-}
-static void six_control_bounds(unsigned index,float *x,float *y,float *w,float *h) {
-    if (index<2) {
-        *x=index==0?14:186; *y=1204; *w=160; *h=47;
-    } else if (index==2) {
-        *x=14; *y=1260; *w=332; *h=48;
-    } else {
-        *x=index==3?14:index==4?126:238;
-        *y=1320; *w=index==3?100:index==4?100:108; *h=46;
-    }
+    return swap_six_box_contains(swap_six_back_box(),p.x,p.y);
 }
 static int six_control_at(Point2 p) {
-    for (unsigned i=0;i<6;++i) {
-        float x,y,w,h;
-        six_control_bounds(i,&x,&y,&w,&h);
-        if (six_hit_rectangle(p,x,y,w,h)) return (int)i;
-    }
-    return -1;
+    return swap_six_control_hit(p.x,p.y);
 }
 static void six_command(unsigned index) {
     if (index<=2) {
@@ -509,16 +490,15 @@ static void draw_six_section(void) {
     label(14,1186,status,text_colour);
 
     for (unsigned i=0;i<6;++i) {
-        float x,y,w,h;
-        six_control_bounds(i,&x,&y,&w,&h);
-        rectangle(x,y,w,h,app.pressed_six==(int)i ?
+        SwapSixBox box=swap_six_control_box(i);
+        rectangle(box.x,box.y,box.width,box.height,app.pressed_six==(int)i ?
                   (Colour){0.32f,0.28f,0.38f} :
                   (Colour){0.14f,0.20f,0.28f});
         const char *title=i==0?swap_six_generator_name(app.six.group,0):
                           i==1?swap_six_generator_name(app.six.group,1):
                           i==2?"RANDOM NON-IDENTITY":
                           i==3?"PREV":i==4?"RESET":"NEXT";
-        label(x+(i>=3?28:18),y+17,title,text_colour);
+        label(box.x+(i>=3?28:18),box.y+17,title,text_colour);
     }
     label(14,1391,app.six_notice?app.six_notice:
           "MOVES PERMUTE SLOTS; COLOURS STAY",text_colour);

@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.22)
+# The native Android application uses scripts/android-build.sh: ICK C frontend,
+# then the Android NDK assembler/linker. This CMake entry is the host oracle.
+if(NOT DEFINED ENV{ICK_CC} OR "$ENV{ICK_CC}" STREQUAL "")
+  message(FATAL_ERROR "Set ICK_CC to the pinned qualified ICK compiler; no stock-C fallback")
+endif()
+set(CMAKE_C_COMPILER "$ENV{ICK_CC}" CACHE FILEPATH "Pinned ICK host compiler" FORCE)
+set(CMAKE_C_FLAGS_INIT "-fno-link-libatomic")
+project(swap_model_checks VERSION 0.1.0 LANGUAGES C)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
+include(CTest)
+add_executable(swap_model_test src/swap.c tests/test_swap.c)
+target_include_directories(swap_model_test PRIVATE src)
+target_link_libraries(swap_model_test PRIVATE m)
+target_compile_options(swap_model_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_test(NAME model-and-geometry COMMAND swap_model_test)

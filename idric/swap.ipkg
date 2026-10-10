@@ -2,6 +2,6 @@ package swap-idric-tests
 
 version = 0.1.0
 sourcedir = "."
-modules = Swap.Model, Swap.Geometry, Swap.Input
+modules = Swap.Model, Swap.Geometry, Swap.Input, Swap.PermSix
 main = Swap.Tests
 executable = swap-idric-tests

@@ -1,0 +1,140 @@
+module Swap.PermSix
+
+import Data.List
+
+-- A pure Idriç model of the finite group ACTION. These constructors distinguish
+-- permanently coloured identities from the six positions they may occupy.
+-- An action is specified by a group and a word in that group's two generators.
+-- Neither the group action nor the drawn path chooses a signed braid lift.
+
+public export
+choice six_identity one_of
+  disk_red
+  disk_cyan
+  disk_gold
+  disk_violet
+  disk_green
+  disk_orange
+
+public export
+choice six_slot one_of
+  position_one
+  position_two
+  position_three
+  position_four
+  position_five
+  position_six
+
+public export
+choice six_group one_of
+  cyclic_six
+  dihedral_six
+  symmetric_six
+
+public export
+choice six_generator one_of
+  first_generator
+  second_generator
+
+public export
+record SixOrder where
+  constructor MkSixOrder
+  first_disk : six_identity
+  second_disk : six_identity
+  third_disk : six_identity
+  fourth_disk : six_identity
+  fifth_disk : six_identity
+  sixth_disk : six_identity
+
+public export
+starting_order : SixOrder
+starting_order = MkSixOrder disk_red disk_cyan disk_gold disk_violet
+                            disk_green disk_orange
+
+public export
+identity_in_slot : SixOrder → six_slot → six_identity
+identity_in_slot order position_one = first_disk order
+identity_in_slot order position_two = second_disk order
+identity_in_slot order position_three = third_disk order
+identity_in_slot order position_four = fourth_disk order
+identity_in_slot order position_five = fifth_disk order
+identity_in_slot order position_six = sixth_disk order
+
+public export
+same_six_identity : six_identity → six_identity → Bool
+same_six_identity disk_red disk_red = True
+same_six_identity disk_cyan disk_cyan = True
+same_six_identity disk_gold disk_gold = True
+same_six_identity disk_violet disk_violet = True
+same_six_identity disk_green disk_green = True
+same_six_identity disk_orange disk_orange = True
+same_six_identity _ _ = False
+
+public export
+same_six_order : SixOrder → SixOrder → Bool
+same_six_order (MkSixOrder a b c d e f) (MkSixOrder g h i j k l) =
+  same_six_identity a g && same_six_identity b h &&
+  same_six_identity c i && same_six_identity d j &&
+  same_six_identity e k && same_six_identity f l
+
+-- These named transformations are all bijections. A turn sends old position
+-- i to i+1 mod 6. Reflection sends i to -i mod 6. The final operator
+-- exchanges just positions 1 and 2 (indexed 0 and 1 in the C boundary).
+public export
+turn_forward : SixOrder → SixOrder
+turn_forward (MkSixOrder a b c d e f) = MkSixOrder f a b c d e
+
+public export
+turn_backward : SixOrder → SixOrder
+turn_backward (MkSixOrder a b c d e f) = MkSixOrder b c d e f a
+
+public export
+reflect_hexagon : SixOrder → SixOrder
+reflect_hexagon (MkSixOrder a b c d e f) = MkSixOrder a f e d c b
+
+public export
+exchange_first_pair : SixOrder → SixOrder
+exchange_first_pair (MkSixOrder a b c d e f) = MkSixOrder b a c d e f
+
+-- C6 = <r>; D6 = <r,s | r^6=s^2=e, srs=r^-1>.
+-- S6 = <r,t> for r=(0 1 2 3 4 5), t=(0 1).
+public export
+act_six : six_group → six_generator → SixOrder → SixOrder
+act_six cyclic_six first_generator = turn_forward
+act_six cyclic_six second_generator = turn_backward
+act_six dihedral_six first_generator = turn_forward
+act_six dihedral_six second_generator = reflect_hexagon
+act_six symmetric_six first_generator = turn_forward
+act_six symmetric_six second_generator = exchange_first_pair
+
+-- Group+word determines every reachable placement, without needing an
+-- arbitrary raw permutation array. Repeated words can have the same endpoint.
+public export
+order_after_six : six_group → List six_generator → SixOrder
+order_after_six group word =
+  foldl (\ordering, generator => act_six group generator ordering)
+        starting_order word
+
+public export
+record SixHistory where
+  constructor MkSixHistory
+  active_group : six_group
+  generator_word : List six_generator
+
+public export
+begin_six : six_group → SixHistory
+begin_six group = MkSixHistory group []
+
+public export
+append_six : six_generator → SixHistory → Maybe SixHistory
+append_six generator (MkSixHistory group word) =
+  if length word >= 128 then Nothing
+  else Just (MkSixHistory group (word ++ [generator]))
+
+public export
+observed_six_order : SixHistory → SixOrder
+observed_six_order history =
+  order_after_six (active_group history) (generator_word history)
+
+-- Idriç is an independent semantic candidate. The Android package still
+-- executes src/permsix.c and uses Sokol for its drawing and touch surface.

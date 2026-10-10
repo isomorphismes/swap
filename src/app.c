@@ -503,6 +503,10 @@ static void draw_six_section(void) {
     snprintf(status,sizeof(status),"COMPLETED %u  /  QUEUED %u",
              app.six.completed,app.six.queued+(app.six.moving?1u:0u));
     label(14,1164,status,text_colour);
+    char cycles[64];
+    swap_six_cycles(app.six.current,cycles,sizeof(cycles));
+    snprintf(status,sizeof(status),"CYCLES: %s",cycles);
+    label(14,1186,status,text_colour);
 
     for (unsigned i=0;i<6;++i) {
         float x,y,w,h;

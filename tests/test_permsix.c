@@ -89,12 +89,24 @@ static void animation_and_queue(void) {
     CHECK(!s.moving && s.queued==0 && s.completed==6);
     SwapSixPlacement initial={{0,1,2,3,4,5}};
     CHECK(same(s.current,initial)); /* r^6 = e, despite six recorded steps */
+    char cycles[64];
+    swap_six_cycles(s.current,cycles,sizeof(cycles));
+    CHECK(strcmp(cycles,"e")==0);
+    CHECK(swap_six_request_generator(&s,0));
+    swap_six_tick(&s,1.0);
+    swap_six_cycles(s.current,cycles,sizeof(cycles));
+    CHECK(strcmp(cycles,"(1 2 3 4 5 6)")==0);
     CHECK(swap_six_select_group(&s,SWAP_SIX_DIHEDRAL));
     CHECK(s.completed==0);
     CHECK(swap_six_request_generator(&s,1)); /* reflection is order 2 */
     CHECK(swap_six_request_generator(&s,1));
     swap_six_tick(&s,2.0);
     CHECK(same(s.current,initial) && s.completed==2);
+    swap_six_reset(&s);
+    CHECK(swap_six_request_generator(&s,1));
+    swap_six_tick(&s,1.0);
+    swap_six_cycles(s.current,cycles,sizeof(cycles));
+    CHECK(strcmp(cycles,"(2 6)(3 5)")==0);
     CHECK(swap_six_select_group(&s,SWAP_SIX_SYMMETRIC));
     CHECK(swap_six_request_generator(&s,1)); /* 1/2 swap is order 2 */
     CHECK(swap_six_request_generator(&s,1));

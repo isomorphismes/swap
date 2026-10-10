@@ -1,4 +1,5 @@
 #include "permsix.h"
+#include "input.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -167,6 +168,27 @@ static void rasterize_six(const SwapSix *state,uint8_t *rgb) {
             }
         }
 }
+static void six_touch_geometry(void) {
+    SwapCanvas canvas=swap_canvas_for_screen(576.0f,1152.0f);
+    CHECK(fabsf(canvas.scale-1.6f)<0.0001f);
+    for(unsigned i=0;i<6;++i) {
+        SwapSixBox box=swap_six_control_box(i);
+        float sx=(box.x+box.width×0.5f)×canvas.scale+canvas.offset_x;
+        float sy=(box.y+box.height×0.5f-720.0f)×canvas.scale+canvas.offset_y;
+        SwapPointer on_screen=swap_pointer_on_canvas(canvas,sx,sy);
+        on_screen.y+=720.0f;
+        CHECK(swap_six_control_hit(on_screen.x,on_screen.y)==(int)i);
+        CHECK(!swap_six_box_contains(box,box.x-1.0f,box.y));
+        CHECK(!swap_six_box_contains(box,box.x+box.width,box.y));
+    }
+    SwapSixBox open=swap_six_open_box(),back=swap_six_back_box();
+    CHECK(swap_six_box_contains(open,180.0f,705.0f));
+    CHECK(swap_six_box_contains(back,180.0f,759.0f));
+    CHECK(swap_six_control_hit(180.0f,705.0f)==-1);
+    CHECK(swap_six_control_hit(180.0f,759.0f)==-1);
+    CHECK(swap_six_control_hit(NAN,1250.0f)==-1);
+    CHECK(swap_six_control_hit(180.0f,900.0f)==-1);
+}
 static void aggregate_result_changes(void) {
     uint8_t before[SIX_SAMPLE_SIDE×SIX_SAMPLE_SIDE×3];
     uint8_t after[SIX_SAMPLE_SIDE×SIX_SAMPLE_SIDE×3];
@@ -209,6 +231,7 @@ int main(void) {
         random_membership(group);
     animation_and_queue();
     aggregate_result_changes();
+    six_touch_geometry();
     bad_input();
     puts("Swap six disks: PASS (C6/D6/S6 closure, transitivity, interpolation, queue)");
     return 0;

@@ -1,5 +1,6 @@
 #include "permsix.h"
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 /* Conventions: slots and identities are separately named roles even though
@@ -204,4 +205,39 @@ bool swap_six_position(const SwapSix *state,unsigned identity,SwapSixPoint *poin
     point->x=x0+(x1-x0)×ease+(length>0.0f ? -dy÷length×bow:0.0f);
     point->y=y0+(y1-y0)×ease+(length>0.0f ?  dx÷length×bow:0.0f);
     return true;
+}
+
+/* The initial identity i occupied slot i. Therefore the cumulative action
+   takes i to the slot now containing identity i; invert identity_at for it.
+   Print nontrivial disjoint cycles in one-based mathematical notation. */
+void swap_six_cycles(SwapSixPlacement order, char *buffer, size_t capacity) {
+    if (!buffer || !capacity) return;
+    buffer[0]=0;
+    if (!swap_six_placement_valid(order)) {
+        snprintf(buffer,capacity,"INVALID"); return;
+    }
+    unsigned image[6],seen=0;
+    for(unsigned slot=0;slot<6;++slot)
+        image[order.identity_at[slot]]=slot;
+    size_t written=0;
+    for(unsigned start=0;start<6;++start) {
+        if((seen&(1u<<start)) || image[start]==start) {
+            seen|=1u<<start; continue;
+        }
+        unsigned current=start;
+        do {
+            if(written<capacity) {
+                int n=snprintf(buffer+written,capacity-written,
+                               current==start?"(%u":" %u",current+1);
+                if(n>0) written+=(size_t)n;
+            }
+            seen|=1u<<current;
+            current=image[current];
+        } while(current!=start);
+        if(written<capacity) {
+            int n=snprintf(buffer+written,capacity-written,")");
+            if(n>0) written+=(size_t)n;
+        }
+    }
+    if(!written) snprintf(buffer,capacity,"e");
 }

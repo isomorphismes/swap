@@ -57,3 +57,13 @@ without uninstalling that test package first.
 Future native Idriç lowering must replace the semantics explicitly, compare
 these same input/geometry fixtures, and preserve the Sokol surface rather than
 silently falling back to an untyped alternate compiler.
+
+## Six-object permutation actions (Idriç sketch)
+
+Swap.PermSix.idric names six distinct identities and six positions; its group
+and generator word compute the action in C6, D6 or S6. Fixed actions are
+bijective, and a group-specific word is kept independently of the visible
+placement. Six-object identities/slots are not signed braid crossings. The
+existing Idriç host test module adds order-six, dihedral relation, symmetric
+swap and history checks. This file is an Idriç semantic candidate, **not** a
+replacement for the native renderer; compilation is a separate CI step.

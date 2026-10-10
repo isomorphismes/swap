@@ -9,6 +9,7 @@
 #include "swap.h"
 #include "input.h"
 #include "views.h"
+#include "permsix.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +18,9 @@
 typedef struct { float r,g,b; } Colour;
 typedef SwapPointer Point2;
 static const Colour ink[3]={{0.96f,0.36f,0.43f},{0.28f,0.75f,0.91f},{0.98f,0.78f,0.31f}};
+static const Colour six_ink[6]={{0.96f,0.36f,0.43f},{0.28f,0.75f,0.91f},
+    {0.98f,0.78f,0.31f},{0.76f,0.54f,0.99f},
+    {0.48f,0.88f,0.58f},{1.00f,0.57f,0.27f}};
 static const Colour background={0.055f,0.065f,0.095f};
 static const Colour text_colour={0.88f,0.90f,0.94f};
 static struct {
@@ -24,6 +28,7 @@ static struct {
     SwapScene pair;
     SwapGrid grid;
     SwapTensor tensor;
+    SwapSix six; /* a separate finite-group action, not a braid history */
     SwapView view;
     float scale, offset_x, offset_y;
     float head_y;
@@ -31,7 +36,11 @@ static struct {
     Point2 pair_head[2];
     float pair_head_y;
     int drag_slot, pressed_button;
-    int pressed_mode, pressed_cell, pressed_panel;
+    int pressed_mode, pressed_cell, pressed_panel, pressed_six;
+    float scroll_y, scroll_target; /* second 720px section is BELOW the first */
+    Point2 down_origin;
+    bool press_tracking, scroll_swipe;
+    const char *six_notice;
     bool dragged_over;           /* explicit, visible choice for dragged identity */
     Point2 press_origin;
     uintptr_t touch_id;
@@ -70,7 +79,7 @@ static void rectangle(float x,float y,float w,float h,Colour c) {
 }
 static void label(float x,float y,const char *value,Colour colour) {
     sdtx_color3f(colour.r,colour.g,colour.b);
-    sdtx_pos((app.offset_x÷app.scale+x)÷8.0f,(app.offset_y÷app.scale+y)÷8.0f);
+    sdtx_pos((app.offset_x÷app.scale+x)÷8.0f,(app.offset_y÷app.scale+y-app.scroll_y)÷8.0f);
     sdtx_puts(value);
 }
 static void identity_label(Point2 point,unsigned identity) {
@@ -86,7 +95,7 @@ static void viewport(void) {
     sgl_defaults();
     sgl_viewport((int)app.offset_x,(int)app.offset_y,
                  (int)(360×app.scale),(int)(720×app.scale),true);
-    sgl_matrix_mode_projection(); sgl_ortho(0,360,720,0,-1,1);
+    sgl_matrix_mode_projection(); sgl_ortho(0,360,720+app.scroll_y,app.scroll_y,-1,1);
     sgl_matrix_mode_modelview(); sgl_load_identity();
     sdtx_canvas(w÷app.scale,h÷app.scale);
     sdtx_origin(0,0); sdtx_font(0);
@@ -406,6 +415,95 @@ static void draw_sets(void) {
         label(x+12,y+18,names[i],text_colour);
     }
 }
+
+/* A second, genuinely BELOW-the-fold section of the THREE canvas.
+   Fixed canvas slots and six permanently coloured identities are distinct.
+   These paths are display interpolations, not braid lifts. */
+static bool six_open_at(Point2 p) {
+    return swap_six_box_contains(swap_six_open_box(),p.x,p.y);
+}
+static bool six_back_at(Point2 p) {
+    return swap_six_box_contains(swap_six_back_box(),p.x,p.y);
+}
+static int six_control_at(Point2 p) {
+    return swap_six_control_hit(p.x,p.y);
+}
+static void six_command(unsigned index) {
+    if (index<=2) {
+        bool accepted=index<2 ? swap_six_request_generator(&app.six,index) :
+                                 swap_six_request_random_nonidentity(&app.six);
+        app.six_notice=accepted?"MOTION QUEUED":"QUEUE FULL";
+    } else if (index==3 || index==5) {
+        unsigned next=(app.six.group+SWAP_SIX_GROUP_COUNT+
+                       (index==3?SWAP_SIX_GROUP_COUNT-1:1))
+                       %SWAP_SIX_GROUP_COUNT;
+        swap_six_select_group(&app.six,next);
+        app.six_notice="GROUP CHANGED / ACTION RESET";
+    } else if (index==4) {
+        swap_six_reset(&app.six);
+        app.six_notice="SIX-DISK ACTION RESET";
+    }
+}
+static void draw_six_section(void) {
+    rectangle(14,691,332,29,(Colour){0.20f,0.27f,0.33f});
+    label(106,702,"SIX DISKS BELOW  v",text_colour);
+
+    rectangle(14,736,332,46,(Colour){0.20f,0.27f,0.33f});
+    label(122,754,"^  BACK TO BRAIDS",text_colour);
+    label(14,807,"SIX COLOURED OBJECTS",text_colour);
+    label(14,835,"GROUP ACTION / NOT BRAID LIFT",text_colour);
+    char status[80];
+    snprintf(status,sizeof(status),"%s / ORDER %u",
+             swap_six_group_name(app.six.group),
+             swap_six_group_order(app.six.group));
+    label(14,866,status,text_colour);
+
+    const Point2 centre={180,1002};
+    const float radius=110;
+    outline_circle(centre,radius,text_colour,1.8f);
+    for (unsigned slot=0;slot<SWAP_SIX_N;++slot) {
+        float theta=-1.57079632679f+6.28318530718f×(float)slot÷6.0f;
+        Point2 point={centre.x+radius×cosf(theta),
+                      centre.y+radius×sinf(theta)};
+        disc(point,22,background);
+        outline_circle(point,21,text_colour,1.4f);
+    }
+    for (unsigned identity=0;identity<SWAP_SIX_N;++identity) {
+        SwapSixPoint unit;
+        if(!swap_six_position(&app.six,identity,&unit)) continue;
+        Point2 point={centre.x+radius×unit.x,centre.y+radius×unit.y};
+        disc(point,18,six_ink[identity]);
+        identity_label(point,identity);
+    }
+    if (app.six.moving) label(118,982,"MOVING",text_colour);
+    snprintf(status,sizeof(status),"COMPLETED SLOTS: %u %u %u %u %u %u",
+             app.six.current.identity_at[0]+1,app.six.current.identity_at[1]+1,
+             app.six.current.identity_at[2]+1,app.six.current.identity_at[3]+1,
+             app.six.current.identity_at[4]+1,app.six.current.identity_at[5]+1);
+    label(14,1140,status,text_colour);
+    snprintf(status,sizeof(status),"COMPLETED %u  /  QUEUED %u",
+             app.six.completed,app.six.queued+(app.six.moving?1u:0u));
+    label(14,1164,status,text_colour);
+    char cycles[64];
+    swap_six_cycles(app.six.current,cycles,sizeof(cycles));
+    snprintf(status,sizeof(status),"CYCLES: %s",cycles);
+    label(14,1186,status,text_colour);
+
+    for (unsigned i=0;i<6;++i) {
+        SwapSixBox box=swap_six_control_box(i);
+        rectangle(box.x,box.y,box.width,box.height,app.pressed_six==(int)i ?
+                  (Colour){0.32f,0.28f,0.38f} :
+                  (Colour){0.14f,0.20f,0.28f});
+        const char *title=i==0?swap_six_generator_name(app.six.group,0):
+                          i==1?swap_six_generator_name(app.six.group,1):
+                          i==2?"RANDOM NON-IDENTITY":
+                          i==3?"PREV":i==4?"RESET":"NEXT";
+        label(box.x+(i>=3?28:18),box.y+17,title,text_colour);
+    }
+    label(14,1391,app.six_notice?app.six_notice:
+          "MOVES PERMUTE SLOTS; COLOURS STAY",text_colour);
+}
+
 static bool board_reset_hit(Point2 p) {
     return p.x>=14 && p.x<346 && p.y>=550 && p.y<612;
 }
@@ -443,12 +541,24 @@ static void command(int command) {
 }
 static Point2 pointer_position(float x,float y) {
     SwapCanvas canvas={app.scale,app.offset_x,app.offset_y};
-    return swap_pointer_on_canvas(canvas,x,y);
+    Point2 result=swap_pointer_on_canvas(canvas,x,y);
+    if (app.view==SWAP_VIEW_THREE) result.y+=app.scroll_y;
+    return result;
 }
 
 static void pointer_down(Point2 p) {
+    app.press_tracking=false;
+    if (fabsf(app.scroll_y-app.scroll_target)>1.0f) return;
+    app.press_tracking=true; app.scroll_swipe=false;
+    app.down_origin=p;
     app.pointer=p; app.drag_slot=-1; app.pressed_button=-1;
-    app.pressed_cell=-1; app.pressed_panel=-1;
+    app.pressed_cell=-1; app.pressed_panel=-1; app.pressed_six=-1;
+    if (app.view==SWAP_VIEW_THREE) {
+        if (six_open_at(p)) {app.pressed_six=-2; return;}
+        if (six_back_at(p)) {app.pressed_six=-3; return;}
+        app.pressed_six=six_control_at(p);
+        if (app.pressed_six>=0) return;
+    }
     app.pressed_mode=swap_view_at(p);
     if(app.pressed_mode>=0) return;
     if(app.view==SWAP_VIEW_GRID) {
@@ -475,11 +585,36 @@ static void pointer_down(Point2 p) {
              app.pair_head[app.drag_slot] : app.head[app.drag_slot];
     else app.notice="TOUCH A COLOURED DOT OR CONTROL";
 }
-static void pointer_up(Point2 p) {
+static void pointer_move(Point2 p) {
     app.pointer=p;
-    if(app.pressed_mode>=0) {
+    if (!app.press_tracking || app.scroll_swipe ||
+        app.view!=SWAP_VIEW_THREE) return;
+    float dy=p.y-app.down_origin.y,dx=p.x-app.down_origin.x;
+    /* Vertical swipe navigates between stacked panels. Horizontal motions
+       are still braid gestures, and a vertical swipe cancels a pressed button. */
+    if (fabsf(dy)>52.0f && fabsf(dy)>1.35f×fabsf(dx)) {
+        app.scroll_target=dy<0.0f?720.0f:0.0f;
+        app.scroll_swipe=true;
+        app.pressed_six=-1; app.pressed_mode=-1; app.pressed_button=-1;
+        app.pressed_panel=-1; app.pressed_cell=-1; app.drag_slot=-1;
+    }
+}
+static void pointer_up(Point2 p) {
+    if (!app.press_tracking) return;
+    app.press_tracking=false;
+    if (app.scroll_swipe) {app.scroll_swipe=false; return;}
+    app.pointer=p;
+    if (app.pressed_six==-2) {
+        if(six_open_at(p)) app.scroll_target=720.0f;
+    } else if (app.pressed_six==-3) {
+        if(six_back_at(p)) app.scroll_target=0.0f;
+    } else if (app.pressed_six>=0) {
+        if(six_control_at(p)==app.pressed_six)
+            six_command((unsigned)app.pressed_six);
+    } else if(app.pressed_mode>=0) {
         if(swap_view_at(p)==app.pressed_mode) {
             app.view=(SwapView)app.pressed_mode;
+            app.scroll_y=0.0f; app.scroll_target=0.0f;
             app.notice=0;
         }
     } else if(app.view==SWAP_VIEW_GRID) {
@@ -510,14 +645,14 @@ static void pointer_up(Point2 p) {
         } else app.notice="DRAG TO THE OTHER STRAND";
     }
     app.drag_slot=-1; app.pressed_button=-1; app.pressed_mode=-1;
-    app.pressed_cell=-1; app.pressed_panel=-1;
+    app.pressed_cell=-1; app.pressed_panel=-1; app.pressed_six=-1;
 }
 static void event(const sapp_event *event) {
     if(event->type==SAPP_EVENTTYPE_MOUSE_DOWN &&
        event->mouse_button==SAPP_MOUSEBUTTON_LEFT && !app.touch_active) {
         pointer_down(pointer_position(event->mouse_x,event->mouse_y));
     } else if(event->type==SAPP_EVENTTYPE_MOUSE_MOVE && !app.touch_active) {
-        app.pointer=pointer_position(event->mouse_x,event->mouse_y);
+        pointer_move(pointer_position(event->mouse_x,event->mouse_y));
     } else if(event->type==SAPP_EVENTTYPE_MOUSE_UP &&
               event->mouse_button==SAPP_MOUSEBUTTON_LEFT && !app.touch_active) {
         pointer_up(pointer_position(event->mouse_x,event->mouse_y));
@@ -534,8 +669,8 @@ static void event(const sapp_event *event) {
         for(int i=0;i<event->num_touches;++i)
             if(app.touch_active && event->touches[i].identifier==app.touch_id &&
                (event->touches[i].changed || event->type==SAPP_EVENTTYPE_TOUCHES_ENDED)) {
-                app.pointer=pointer_position(event->touches[i].pos_x,
-                                             event->touches[i].pos_y);
+                pointer_move(pointer_position(event->touches[i].pos_x,
+                                              event->touches[i].pos_y));
                 if(event->type==SAPP_EVENTTYPE_TOUCHES_ENDED) {
                     pointer_up(app.pointer);
                     app.touch_active=false;
@@ -547,6 +682,7 @@ static void event(const sapp_event *event) {
               event->type==SAPP_EVENTTYPE_SUSPENDED) {
         app.touch_active=false; app.drag_slot=-1; app.pressed_button=-1;
         app.pressed_mode=-1; app.pressed_cell=-1; app.pressed_panel=-1;
+        app.pressed_six=-1; app.press_tracking=false; app.scroll_swipe=false;
         if(event->type==SAPP_EVENTTYPE_SUSPENDED) app.scene.paused=true;
     }
 }
@@ -554,9 +690,10 @@ static void init(void) {
     swap_reset(&app.scene); swap_reset(&app.pair);
     swap_grid_reset(&app.grid);
     swap_tensor_set_axes(&app.tensor,2);
+    swap_six_init(&app.six);
     app.view=SWAP_VIEW_THREE;
     app.drag_slot=-1; app.pressed_button=-1; app.pressed_mode=-1;
-    app.pressed_cell=-1; app.pressed_panel=-1;
+    app.pressed_cell=-1; app.pressed_panel=-1; app.pressed_six=-1;
     app.dragged_over=true; app.scale=1;
     sg_setup(&(sg_desc){.environment=sglue_environment(),.logger.func=slog_func});
     sgl_setup(&(sgl_desc_t){.max_vertices=60000,.max_commands=6000,.logger.func=slog_func});
@@ -567,6 +704,13 @@ static void frame(void) {
     /* Do not fast-forward an entire crossing after a lifecycle stall. */
     swap_tick(&app.scene,fmin(seconds,0.10));
     swap_tick(&app.pair,fmin(seconds,0.10));
+    swap_six_tick(&app.six,fmin(seconds,0.10));
+    /* Scroll is animated in canvas coordinates. Neither section overwrites
+       the other, and all original THREE hit-box coordinates remain intact. */
+    float scroll_difference=app.scroll_target-app.scroll_y;
+    float scroll_step=(float)fmin(seconds,0.06)×3600.0f;
+    if (fabsf(scroll_difference)<=scroll_step) app.scroll_y=app.scroll_target;
+    else app.scroll_y+=scroll_difference>0.0f?scroll_step:-scroll_step;
     viewport();
     label(14,16,"SWAP",text_colour);
     label(174,16,app.view==SWAP_VIEW_THREE?"BRAIDS / TRIANGLE":
@@ -604,6 +748,7 @@ static void frame(void) {
         }
         if(app.notice) label(14,229,app.notice,text_colour);
     }
+    if(app.view==SWAP_VIEW_THREE) draw_six_section();
     sg_begin_pass(&(sg_pass){
         .action.colors[0]={.load_action=SG_LOADACTION_CLEAR,
                           .clear_value={background.r,background.g,background.b,1}},

@@ -53,6 +53,32 @@ three independently testable experiments:
 meaning of the displays and outstanding decisions. The new modes still
 require physical-device touch/graphics acceptance.
 
+## Six colored disks, below THREE
+
+The THREE screen continues below its original 720-unit height. **Swipe upward**
+or tap **SIX DISKS BELOW** underneath the original braid controls to reach a
+second section. Swipe downward or tap **BACK TO BRAIDS** to return. The first
+scene, existing touch hit boxes, TWO, GRID and SETS remain separate.
+
+Six permanently colored disks animate three transitive subgroup actions on
+six slots: cyclic C6 (rotations), hexagonal dihedral D6 (rotations/reflections),
+and symmetric S6 (all six-slot permutations). Each offers two generators and
+reproducible *nonidentity* random actions. Rapid taps queue moves. Disk color
+remains attached to the identity through movement.
+
+David Madore's [six-object animation](https://www.youtube.com/watch?v=9KRVK1_2QXs)
+shows all **16** conjugacy classes of transitive degree-six subgroups. The
+initial Swap implementation has **three**, not the full gallery. The source and
+author are credited in [research notes](notes/david-madore-transitive-groups.md).
+
+The finite-group model lives in src/permsix.c; tests/test_permsix.c checks
+generator closure to exactly 6, 12 and 720 elements, transitivity, preserved
+identity, animation and queued actions. This is a chosen on-screen permutation
+animation, **not** a canonical braid lift or a substitute for signed braids.
+
+The added lower section is source code only until qualified ICK/NDK/Sokol
+compilation and physical touchscreen testing provide evidence.
+
 ## Code and sketches
 
 - `src/swap.c`: small independent state and geometry model, using Icky C `×`/`÷`.

@@ -125,6 +125,70 @@ static void bad_input(void) {
     swap_six_tick(&s,1.3);
     CHECK(s.completed==2 && s.queued==SWAP_SIX_QUEUE_CAP-2);
 }
+/* Aggregate software-raster comparison, using the SAME geometric positions
+   that the Sokol scene consumes. It is not a GPU scanout or a phone result.
+   Two changing colored discs must change an appreciable RESULT AREA, not
+   just a status string, chosen pixel or synthetic change counter. */
+enum { SIX_SAMPLE_SIDE = 260 };
+static void rasterize_six(const SwapSix *state,uint8_t *rgb) {
+    static const uint8_t colours[6][3] = {
+        {245,92,110},{71,191,232},{250,199,79},
+        {194,138,252},{122,224,148},{255,145,69}
+    };
+    SwapSixPoint positions[6];
+    for(unsigned id=0;id<6;++id)
+        CHECK(swap_six_position(state,id,&positions[id]));
+    for(unsigned y=0;y<SIX_SAMPLE_SIDE;++y)
+        for(unsigned x=0;x<SIX_SAMPLE_SIDE;++x) {
+            unsigned at=(y×SIX_SAMPLE_SIDE+x)×3;
+            rgb[at]=13; rgb[at+1]=16; rgb[at+2]=24;
+            float canvas_x=50.0f+(float)x;
+            float canvas_y=872.0f+(float)y;
+            for(unsigned id=0;id<6;++id) {
+                float dx=canvas_x-(180.0f+110.0f×positions[id].x);
+                float dy=canvas_y-(1002.0f+110.0f×positions[id].y);
+                if(dx×dx+dy×dy<=18.0f×18.0f) {
+                    rgb[at]=colours[id][0];
+                    rgb[at+1]=colours[id][1];
+                    rgb[at+2]=colours[id][2];
+                }
+            }
+        }
+}
+static void aggregate_result_changes(void) {
+    uint8_t before[SIX_SAMPLE_SIDE×SIX_SAMPLE_SIDE×3];
+    uint8_t after[SIX_SAMPLE_SIDE×SIX_SAMPLE_SIDE×3];
+    SwapSix state;
+    swap_six_init(&state);
+    rasterize_six(&state,before);
+    rasterize_six(&state,after);
+    CHECK(memcmp(before,after,sizeof(before))==0); /* fixed point */
+    for(unsigned group=0;group<SWAP_SIX_GROUP_COUNT;++group)
+        for(unsigned generator=0;generator<2;++generator) {
+            CHECK(swap_six_select_group(&state,group));
+            CHECK(swap_six_request_generator(&state,generator));
+            swap_six_tick(&state,1.0);
+            rasterize_six(&state,after);
+            unsigned changed=0;
+            double sum_abs=0.0;
+            for(unsigned pixel=0;pixel<SIX_SAMPLE_SIDE×SIX_SAMPLE_SIDE;++pixel) {
+                unsigned base=pixel×3;
+                bool differs=false;
+                for(unsigned channel=0;channel<3;++channel) {
+                    int d=(int)before[base+channel]-(int)after[base+channel];
+                    if(d) differs=true;
+                    sum_abs+=(double)abs(d);
+                }
+                if(differs) ++changed;
+            }
+            double fraction=(double)changed÷(SIX_SAMPLE_SIDE×SIX_SAMPLE_SIDE);
+            double mean=sum_abs÷(3×SIX_SAMPLE_SIDE×SIX_SAMPLE_SIDE);
+            CHECK(fraction>0.020); /* at least 2% of the 260x260 result region */
+            CHECK(mean>1.0); /* RGB8 aggregate channel difference */
+            printf("Six-raster: group %u generator %u / %u pixels / mean RGB8 %.2f\n",
+                   group,generator,changed,mean);
+        }
+}
 int main(void) {
     finite_group(SWAP_SIX_CYCLIC,6);
     finite_group(SWAP_SIX_DIHEDRAL,12);
@@ -132,6 +196,7 @@ int main(void) {
     for (unsigned group=0;group<SWAP_SIX_GROUP_COUNT;++group)
         random_membership(group);
     animation_and_queue();
+    aggregate_result_changes();
     bad_input();
     puts("Swap six disks: PASS (C6/D6/S6 closure, transitivity, interpolation, queue)");
     return 0;

@@ -3,6 +3,27 @@
 #include <stdio.h>
 #include <string.h>
 
+SwapSixBox swap_six_control_box(unsigned index) {
+    if(index==0) return (SwapSixBox){14,1204,160,47};
+    if(index==1) return (SwapSixBox){186,1204,160,47};
+    if(index==2) return (SwapSixBox){14,1260,332,48};
+    if(index==3) return (SwapSixBox){14,1320,100,46};
+    if(index==4) return (SwapSixBox){126,1320,100,46};
+    if(index==5) return (SwapSixBox){238,1320,108,46};
+    return (SwapSixBox){0,0,0,0};
+}
+SwapSixBox swap_six_open_box(void) { return (SwapSixBox){14,691,332,29}; }
+SwapSixBox swap_six_back_box(void) { return (SwapSixBox){14,736,332,46}; }
+bool swap_six_box_contains(SwapSixBox box,float x,float y) {
+    return isfinite(x) && isfinite(y) && box.width>0.0f && box.height>0.0f &&
+           x>=box.x && x<box.x+box.width && y>=box.y && y<box.y+box.height;
+}
+int swap_six_control_hit(float x,float y) {
+    for(unsigned i=0;i<6;++i)
+        if(swap_six_box_contains(swap_six_control_box(i),x,y)) return (int)i;
+    return -1;
+}
+
 /* Conventions: slots and identities are separately named roles even though
    both are represented by integers 0..5 at the C/NDK boundary. A permutation
    maps old slots to new slots. Composition is chronological left-to-right. */

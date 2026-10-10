@@ -13,6 +13,14 @@ enum { SWAP_SIX_CYCLIC = 0, SWAP_SIX_DIHEDRAL = 1,
 typedef struct { uint8_t image[SWAP_SIX_N]; } SwapSixPermutation;
 typedef struct { uint8_t identity_at[SWAP_SIX_N]; } SwapSixPlacement;
 typedef struct { float x, y; } SwapSixPoint;
+/* One shared set of button rectangles for raster drawing AND touch picking.
+   All coordinates are in the original 360-wide canvas; six occupies y>720. */
+typedef struct { float x, y, width, height; } SwapSixBox;
+SwapSixBox swap_six_control_box(unsigned index); /* 0..5 */
+SwapSixBox swap_six_open_box(void);
+SwapSixBox swap_six_back_box(void);
+bool swap_six_box_contains(SwapSixBox box,float x,float y);
+int swap_six_control_hit(float x,float y);
 
 typedef struct {
     unsigned group;

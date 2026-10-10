@@ -448,17 +448,20 @@ static int six_control_at(Point2 p) {
     return -1;
 }
 static void six_command(unsigned index) {
-    bool accepted=true;
-    if (index<2) accepted=swap_six_request_generator(&app.six,index);
-    else if (index==2) accepted=swap_six_request_random_nonidentity(&app.six);
-    else if (index==3)
-        swap_six_select_group(&app.six,
-            (app.six.group+SWAP_SIX_GROUP_COUNT-1)%SWAP_SIX_GROUP_COUNT);
-    else if (index==4) swap_six_reset(&app.six);
-    else if (index==5)
-        swap_six_select_group(&app.six,
-            (app.six.group+1)%SWAP_SIX_GROUP_COUNT);
-    app.six_notice=accepted?"MOTION QUEUED":"QUEUE FULL";
+    if (index<=2) {
+        bool accepted=index<2 ? swap_six_request_generator(&app.six,index) :
+                                 swap_six_request_random_nonidentity(&app.six);
+        app.six_notice=accepted?"MOTION QUEUED":"QUEUE FULL";
+    } else if (index==3 || index==5) {
+        unsigned next=(app.six.group+SWAP_SIX_GROUP_COUNT+
+                       (index==3?SWAP_SIX_GROUP_COUNT-1:1))
+                       %SWAP_SIX_GROUP_COUNT;
+        swap_six_select_group(&app.six,next);
+        app.six_notice="GROUP CHANGED / ACTION RESET";
+    } else if (index==4) {
+        swap_six_reset(&app.six);
+        app.six_notice="SIX-DISK ACTION RESET";
+    }
 }
 static void draw_six_section(void) {
     rectangle(14,691,332,29,(Colour){0.20f,0.27f,0.33f});
@@ -492,7 +495,7 @@ static void draw_six_section(void) {
         identity_label(point,identity);
     }
     if (app.six.moving) label(118,982,"MOVING",text_colour);
-    snprintf(status,sizeof(status),"SLOT IDENTITIES: %u %u %u %u %u %u",
+    snprintf(status,sizeof(status),"COMPLETED SLOTS: %u %u %u %u %u %u",
              app.six.current.identity_at[0]+1,app.six.current.identity_at[1]+1,
              app.six.current.identity_at[2]+1,app.six.current.identity_at[3]+1,
              app.six.current.identity_at[4]+1,app.six.current.identity_at[5]+1);

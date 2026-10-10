@@ -3,6 +3,7 @@ module Swap.Tests
 import Swap.Model
 import Swap.Geometry
 import Swap.Input
+import Swap.PermSix
 import Data.Text
 import System
 
@@ -165,4 +166,30 @@ main = do
   assert_test "triangle reaches exchanged resting vertex"
     (near (distance (triangle_during initial_order left_turn 1.0 coral)
                     (triangle_slot second_slot)) 0.0)
+  -- Six coloured identities, generator actions and group relations.
+  let six_turn = [first_generator,first_generator,first_generator,
+                  first_generator,first_generator,first_generator]
+  assert_test "C6 rotation has order six"
+    (same_six_order (order_after_six cyclic_six six_turn) starting_order)
+  assert_test "D6 reflection squared is identity"
+    (same_six_order (order_after_six dihedral_six
+                     [second_generator,second_generator]) starting_order)
+  assert_test "D6 srs = r inverse"
+    (same_six_order
+      (order_after_six dihedral_six
+        [second_generator,first_generator,second_generator])
+      (turn_backward starting_order))
+  assert_test "S6 adjacent swap squared is identity"
+    (same_six_order (order_after_six symmetric_six
+                     [second_generator,second_generator]) starting_order)
+  assert_test "S6 generators do not commute"
+    (not (same_six_order
+           (order_after_six symmetric_six [first_generator,second_generator])
+           (order_after_six symmetric_six [second_generator,first_generator])))
+  case append_six first_generator (begin_six cyclic_six) of
+    Nothing => assert_test "six action accepted" False
+    Just history =>
+      assert_test "six identity moves to next slot"
+        (same_six_identity (identity_in_slot (observed_six_order history)
+                                              position_two) disk_red)
   putStrLn "Swap Idriç: host semantics and touch assertions passed"

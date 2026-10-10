@@ -2,6 +2,7 @@
 #define SWAP_PERMSIX_H
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 /* Degree-six permutation ACTION, not a braid or a braid equivalence test.
    image[old_slot] is the new slot of the same permanently coloured object. */
@@ -40,5 +41,7 @@ bool swap_six_request_generator(SwapSix *state, unsigned generator);
 bool swap_six_request_random_nonidentity(SwapSix *state);
 void swap_six_tick(SwapSix *state, double seconds);
 bool swap_six_position(const SwapSix *state, unsigned identity, SwapSixPoint *point);
+/* Cycle form of the completed action on ORIGINAL positions, fixed points omitted. */
+void swap_six_cycles(SwapSixPlacement order, char *buffer, size_t capacity);
 
 #endif

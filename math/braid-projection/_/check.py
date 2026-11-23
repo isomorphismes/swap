@@ -17,6 +17,7 @@ RECEIPTS = ROOT / 'receipts'
 IDRIC_REVISION = '94dfd99bd3e376507fedc8611053b7173b2519f0'
 LETTERS = dict(zip('aAbB', ('over_first', 'under_first', 'over_second', 'under_second')))
 ORDERS = ('012', '021', '102', '120', '201', '210')
+STRANDS = dict(zip('012', ('first', 'second', 'third')))
 WINDINGS = ('zero', 'one', 'two')
 
 
@@ -92,8 +93,9 @@ def prepare(lane: str) -> Path:
     rows = fixtures()
     if lane == 'idric':
         lines = ['module FixtureProofs', 'import BraidProjection', 'import Data.Text', '']
+        order_names = {order: '_'.join(STRANDS[strand] for strand in order) for order in ORDERS}
         lines += ['order_code : permutation → Text']
-        lines += [f'order_code order_{order} = "{order}"' for order in ORDERS]
+        lines += [f'order_code {name} = "{order}"' for order, name in order_names.items()]
         lines += ['winding_code : winding_mod_three → Text']
         lines += [f'winding_code winding_{name} = "{value}"' for value, name in enumerate(WINDINGS)]
     else:
@@ -103,7 +105,7 @@ def prepare(lane: str) -> Path:
     for index, row in enumerate(rows):
         if lane == 'idric':
             word = '[' + ', '.join(LETTERS[x] for x in row['word']) + ']'
-            lines += [f'endpoints_{index} : project_endpoints {word} = order_{row["permutation"]}',
+            lines += [f'endpoints_{index} : project_endpoints {word} = {order_names[row["permutation"]]}',
                       f'endpoints_{index} = Refl',
                       f'winding_{index} : winding {word} = winding_{WINDINGS[row["winding_mod_three"]]}',
                       f'winding_{index} = Refl', '']
@@ -173,8 +175,9 @@ def check_lane(lane: str) -> None:
         for name, (body, tokens) in bad.items():
             (work / f'{name}.idric').write_text('module ' + name + '\nimport BraidProjection\n' + body, encoding='utf-8')
             run('idric-reject-' + name, checker + [name + '.idric'], work, rejects=tokens)
-        old, new = 'swap_first order_012 = order_102', 'swap_first order_012 = order_012'
-        extension, tokens = 'idric', ('first_twice', 'order_102')
+        old, new = ('swap_first first_second_third = second_first_third',
+                    'swap_first first_second_third = first_second_third')
+        extension, tokens = 'idric', ('first_twice', 'second_first_third')
     mutant = WORK / (lane + '-mutant')
     if mutant.exists():
         shutil.rmtree(mutant)

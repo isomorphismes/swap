@@ -22,16 +22,15 @@ inverse_crossing under_first = over_first
 inverse_crossing over_second = under_second
 inverse_crossing under_second = over_second
 
--- Each alternative is a bijection, not an arbitrary triple of identities.
--- Digits name identities in the three successive slots, not machine integers.
+-- Each alternative names the strand identities in the three successive slots.
 public export
 choice permutation one_of
-  order_012
-  order_021
-  order_102
-  order_120
-  order_201
-  order_210
+  first_second_third
+  first_third_second
+  second_first_third
+  second_third_first
+  third_first_second
+  third_second_first
 
 -- An explicit equivalence relation on WORDS, not propositional word equality.
 -- Indexed data uses the supported inherited declaration form. No new grammar
@@ -112,21 +111,21 @@ append_context (SlideThree rest) suffix = SlideThree (rest ++ suffix)
 
 public export
 swap_first : permutation → permutation
-swap_first order_012 = order_102
-swap_first order_021 = order_201
-swap_first order_102 = order_012
-swap_first order_120 = order_210
-swap_first order_201 = order_021
-swap_first order_210 = order_120
+swap_first first_second_third = second_first_third
+swap_first first_third_second = third_first_second
+swap_first second_first_third = first_second_third
+swap_first second_third_first = third_second_first
+swap_first third_first_second = first_third_second
+swap_first third_second_first = second_third_first
 
 public export
 swap_second : permutation → permutation
-swap_second order_012 = order_021
-swap_second order_021 = order_012
-swap_second order_102 = order_120
-swap_second order_120 = order_102
-swap_second order_201 = order_210
-swap_second order_210 = order_201
+swap_second first_second_third = first_third_second
+swap_second first_third_second = first_second_third
+swap_second second_first_third = second_third_first
+swap_second second_third_first = second_first_third
+swap_second third_first_second = third_second_first
+swap_second third_second_first = third_first_second
 
 public export
 endpoint_move : crossing → permutation → permutation
@@ -137,21 +136,21 @@ endpoint_move under_second = swap_second
 
 public export
 first_twice : (before : permutation) → swap_first (swap_first before) = before
-first_twice order_012 = Refl
-first_twice order_021 = Refl
-first_twice order_102 = Refl
-first_twice order_120 = Refl
-first_twice order_201 = Refl
-first_twice order_210 = Refl
+first_twice first_second_third = Refl
+first_twice first_third_second = Refl
+first_twice second_first_third = Refl
+first_twice second_third_first = Refl
+first_twice third_first_second = Refl
+first_twice third_second_first = Refl
 
 public export
 second_twice : (before : permutation) → swap_second (swap_second before) = before
-second_twice order_012 = Refl
-second_twice order_021 = Refl
-second_twice order_102 = Refl
-second_twice order_120 = Refl
-second_twice order_201 = Refl
-second_twice order_210 = Refl
+second_twice first_second_third = Refl
+second_twice first_third_second = Refl
+second_twice second_first_third = Refl
+second_twice second_third_first = Refl
+second_twice third_first_second = Refl
+second_twice third_second_first = Refl
 
 public export
 endpoint_cancellation : (generator : crossing) → (before : permutation) →
@@ -165,12 +164,12 @@ public export
 endpoint_braid_relation : (before : permutation) →
   endpoint_move over_first (endpoint_move over_second (endpoint_move over_first before)) =
   endpoint_move over_second (endpoint_move over_first (endpoint_move over_second before))
-endpoint_braid_relation order_012 = Refl
-endpoint_braid_relation order_021 = Refl
-endpoint_braid_relation order_102 = Refl
-endpoint_braid_relation order_120 = Refl
-endpoint_braid_relation order_201 = Refl
-endpoint_braid_relation order_210 = Refl
+endpoint_braid_relation first_second_third = Refl
+endpoint_braid_relation first_third_second = Refl
+endpoint_braid_relation second_first_third = Refl
+endpoint_braid_relation second_third_first = Refl
+endpoint_braid_relation third_first_second = Refl
+endpoint_braid_relation third_second_first = Refl
 
 public export
 endpoint_action : BraidAction permutation
@@ -178,25 +177,25 @@ endpoint_action = ActsBy endpoint_move endpoint_cancellation endpoint_braid_rela
 
 public export
 project_endpoints : BraidWord → permutation
-project_endpoints word = run_word endpoint_action word order_012
+project_endpoints word = run_word endpoint_action word first_second_third
 
 public export
 representative : permutation → BraidWord
-representative order_012 = []
-representative order_021 = [over_second]
-representative order_102 = [over_first]
-representative order_120 = [over_first, over_second]
-representative order_201 = [over_second, over_first]
-representative order_210 = [over_first, over_second, over_first]
+representative first_second_third = []
+representative first_third_second = [over_second]
+representative second_first_third = [over_first]
+representative second_third_first = [over_first, over_second]
+representative third_first_second = [over_second, over_first]
+representative third_second_first = [over_first, over_second, over_first]
 
 public export
 projection_surjective : (order : permutation) → project_endpoints (representative order) = order
-projection_surjective order_012 = Refl
-projection_surjective order_021 = Refl
-projection_surjective order_102 = Refl
-projection_surjective order_120 = Refl
-projection_surjective order_201 = Refl
-projection_surjective order_210 = Refl
+projection_surjective first_second_third = Refl
+projection_surjective first_third_second = Refl
+projection_surjective second_first_third = Refl
+projection_surjective second_third_first = Refl
+projection_surjective third_first_second = Refl
+projection_surjective third_second_first = Refl
 
 -- Exponent sum modulo THREE, a braid invariant which can distinguish a square
 -- from the identity. This finite invariant is intentionally not complete.

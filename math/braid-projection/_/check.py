@@ -156,6 +156,7 @@ def check_lane(lane: str) -> None:
             raise RuntimeError('Pinned Idriç compiler has not been bootstrapped')
         libs = checkout / '_' / 'libs'
         os.environ['IDRIS2_PATH'] = ':'.join(str(libs / name / 'build' / 'ttc') for name in ('prelude', 'base', 'linear'))
+        os.environ['IDRIS2_DATA'] = str(checkout / '_' / 'support')
         os.environ['IDRIS2_LIBS'] = str(checkout / '_' / 'support' / 'c')
         os.environ['LD_LIBRARY_PATH'] = os.environ['IDRIS2_LIBS'] + ':' + os.environ.get('LD_LIBRARY_PATH', '')
         os.environ['PATH'] = str(checkout / '.tools' / 'bin') + ':' + os.environ['PATH']

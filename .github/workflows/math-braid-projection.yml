@@ -1,0 +1,72 @@
+name: Paired braid semantics
+on:
+  pull_request:
+    paths: ['math/braid-projection/**', '.github/workflows/math-braid-projection.yml']
+permissions:
+  contents: read
+concurrency:
+  group: math-braid-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  reference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Independent finite reference and shared data
+        run: python3 math/braid-projection/_/check.py reference
+  agda:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Install Agda 2.6.3; no standard library
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y agda-bin
+          test "$(agda --version)" = 'Agda version 2.6.3'
+          mkdir -p math/braid-projection/receipts
+          dpkg-query -W agda-bin libghc-agda-dev > math/braid-projection/receipts/agda-packages.txt
+          sha256sum "$(command -v agda)" > math/braid-projection/receipts/agda-binary.sha256
+      - name: Check proofs and reject false claims and a broken action
+        run: python3 math/braid-projection/_/check.py agda
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: agda-braid-${{ github.event.pull_request.head.sha }}
+          path: math/braid-projection/receipts/
+  idric:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: isomorphisms/Idric
+          ref: 94dfd99bd3e376507fedc8611053b7173b2519f0
+          path: .math-idric-compiler
+          persist-credentials: false
+      - name: Bootstrap exact Idric, not an alternate compiler
+        run: |
+          mkdir -p math/braid-projection/receipts
+          cd .math-idric-compiler
+          set -o pipefail
+          ./edric bootstrap 2>&1 | tee ../math/braid-projection/receipts/idric-bootstrap.log
+      - name: Check proofs, execute shared fixtures and reject mutants
+        env:
+          IDRIC_CHECKOUT: ${{ github.workspace }}/.math-idric-compiler
+        run: python3 math/braid-projection/_/check.py idric
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: idric-braid-${{ github.event.pull_request.head.sha }}
+          path: math/braid-projection/receipts/
